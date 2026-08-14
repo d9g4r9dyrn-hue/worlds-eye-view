@@ -13,12 +13,13 @@ continent, or a city dark hours before its neighbour.
 
 ## Where the cameras come from
 
-Around **26,700 cameras**, all from feeds that are public and need no key:
+Around **27,700 cameras**, all from feeds that are public and need no key:
 
 | Source | Roughly | Covers |
 | --- | --- | --- |
 | 511 traveler-information sites | 21,400 | 14 US states + 8 Canadian provinces/territories |
 | Caltrans CCTV | 3,400 | California highways |
+| DriveBC | 1,030 | British Columbia — runs its own software, not the 511 platform |
 | Fintraffic | 810 | Finland — the far north gets genuine polar night |
 | Transport for London JamCams | 780 | Greater London |
 | NZ Transport Agency | 260 | New Zealand — the only southern-hemisphere source |
