@@ -21,6 +21,7 @@ import { digitrafficSource } from "../src/lib/cams/sources/digitraffic";
 import { nztaSource } from "../src/lib/cams/sources/nzta";
 import { driveBcSource } from "../src/lib/cams/sources/drivebc";
 import { singaporeSource } from "../src/lib/cams/sources/singapore";
+import { hongKongSource } from "../src/lib/cams/sources/hongkong";
 import { avoSource } from "../src/lib/cams/sources/avo";
 import { windySource } from "../src/lib/cams/sources/windy";
 import { curatedSource, PROMOTIONS } from "../src/lib/cams/sources/curated";
@@ -35,6 +36,7 @@ const SOURCES: CamSource[] = [
   digitrafficSource,
   nztaSource,
   driveBcSource,
+  hongKongSource,
   singaporeSource,
   windySource,
 ];

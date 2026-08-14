@@ -8,6 +8,7 @@ import { digitrafficSource } from "./sources/digitraffic";
 import { nztaSource } from "./sources/nzta";
 import { driveBcSource } from "./sources/drivebc";
 import { singaporeSource } from "./sources/singapore";
+import { hongKongSource } from "./sources/hongkong";
 import { curatedSource, PROMOTIONS } from "./sources/curated";
 
 /**
@@ -46,6 +47,7 @@ const SOURCES: RegisteredSource[] = [
   { source: digitrafficSource, ttlMs: 6 * HOUR },
   { source: nztaSource, ttlMs: 6 * HOUR },
   { source: driveBcSource, ttlMs: 6 * HOUR },
+  { source: hongKongSource, ttlMs: 6 * HOUR },
   // Singapore republishes every frame under a fresh UUID, so a stale
   // roster points at frames that no longer exist — same failure mode as
   // AVO, and the same short TTL.
