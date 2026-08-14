@@ -6,10 +6,14 @@ resize camera frames on every request. Railway hosts the app and
 corticorp.com's DNS points a subdomain at it, exactly the arrangement
 news.corticorp.com already uses.
 
-**It does NOT need a volume, a database, or any API key.** That's the main
-way this differs from the news deploy — the catalogue lives in memory and
-rebuilds itself on boot, so there is nothing to persist and nothing to
-back up. A restart costs about 40 seconds of warm-up on the first request.
+**It does NOT need a volume, and the camera map needs no database or API
+key.** The catalogue lives in memory and rebuilds on boot, so there's
+nothing to persist for it and nothing to back up; a restart costs about 40
+seconds of warm-up, absorbed by a boot-time warm so no visitor pays it.
+
+A Postgres service *is* attached, but only for optional accounts and saved
+camera walls. If it went away entirely the map would carry on working —
+that separation is deliberate and worth keeping.
 
 ## Current state
 
@@ -51,11 +55,52 @@ Nothing else is required. There is deliberately no volume to mount and no
 
 ## 3. Environment variables
 
-Only one, and it's optional:
+All optional. The map works fully with none of them set.
 
 | Variable | Required | What it does |
 | --- | --- | --- |
-| `WINDY_API_KEY` | No | Adds Windy's global webcam catalogue. Without it the map covers North America and London only. Free key at [api.windy.com/webcams](https://api.windy.com/webcams). |
+| `WINDY_API_KEY` | No | Adds Windy's global webcam catalogue. Without it, coverage is North America, Finland, London, New Zealand and Singapore. Free key at [api.windy.com/webcams](https://api.windy.com/webcams). |
+| `DATABASE_URL` | No | Postgres for accounts and saved walls. Already set on Railway as `${{Postgres.DATABASE_URL}}`. |
+| `AUTH_SECRET` | No | Signs session cookies. Already set. |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | No | Google sign-in. **Not yet set** — see below. |
+
+Accounts stay switched off until *all* of `DATABASE_URL`, `AUTH_SECRET`
+and both Google values are present. Until then the sign-in button is
+hidden and walls live in localStorage, which is a supported state rather
+than a broken one.
+
+### Turning on Google sign-in
+
+Roughly ten minutes in the Google Cloud console, all free — no billing
+account and no review process for this scope.
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → create a project (e.g. `worlds-eye-view`).
+2. **APIs & Services → OAuth consent screen**:
+   - User type **External**, then **Publish app** (leaving it in Testing restricts sign-in to accounts you list by hand).
+   - App name `World's Eye View`, your support email.
+   - Authorised domain: `corticorp.com`.
+   - Privacy policy URL: `https://cams.corticorp.com/privacy` (already live).
+   - Scopes: leave the defaults. The app requests only `openid email profile`; adding anything else would trigger Google's verification review for no benefit.
+3. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
+   - Type **Web application**.
+   - Authorised JavaScript origin: `https://cams.corticorp.com`
+   - Authorised redirect URI: `https://cams.corticorp.com/api/auth/callback/google`
+
+     That path is exact — a trailing slash or a missing `/google` produces `redirect_uri_mismatch` at sign-in.
+4. Copy the client ID and secret onto the service:
+
+```bash
+railway variables --service web \
+  --set AUTH_GOOGLE_ID=<client id> \
+  --set AUTH_GOOGLE_SECRET=<client secret>
+```
+
+Railway redeploys automatically on a variable change. The sign-in button
+appears once it's back up.
+
+To add localhost sign-in for development, add `http://localhost:3002` as
+an origin and `http://localhost:3002/api/auth/callback/google` as a
+redirect URI on the same client.
 
 ## 4. Point cams.corticorp.com at it
 
