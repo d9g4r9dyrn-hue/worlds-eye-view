@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/**
+ * World's Eye View — dark by default, always.
+ *
+ * There's no light theme and no theme toggle on purpose: the entire
+ * surface of this site is satellite imagery and camera frames, and a
+ * light chrome around a dark map looks like a bug. Everything here is
+ * built to disappear behind the pictures.
+ */
+:root {
+  --wev-bg: #06080b;
+  --wev-panel: #0d1117;
+  --wev-panel-2: #141b24;
+  --wev-border: #1e2833;
+  --wev-text: #dbe4ee;
+  --wev-muted: #7d8b9c;
+  --wev-accent: #38bdf8;
+  --wev-accent-dim: #0284c7;
+}
+
+@theme inline {
+  --color-wev-bg: var(--wev-bg);
+  --color-wev-panel: var(--wev-panel);
+  --color-wev-panel-2: var(--wev-panel-2);
+  --color-wev-border: var(--wev-border);
+  --color-wev-text: var(--wev-text);
+  --color-wev-muted: var(--wev-muted);
+  --color-wev-accent: var(--wev-accent);
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--wev-bg);
+  color: var(--wev-text);
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Leaflet paints its own light-grey backdrop between tiles, which flashes
+   on every pan. Matching it to the page background hides the seam. */
+.leaflet-container {
+  background: var(--wev-bg);
+}
+
+/* Leaflet's default attribution is white-on-white against dark imagery. */
+.leaflet-control-attribution {
+  background: rgba(6, 8, 11, 0.78) !important;
+  color: var(--wev-muted) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a {
+  color: var(--wev-muted) !important;
+}
+
+.leaflet-bar a {
+  background: var(--wev-panel) !important;
+  color: var(--wev-text) !important;
+  border-color: var(--wev-border) !important;
+}
+.leaflet-bar a:hover {
+  background: var(--wev-panel-2) !important;
+}
