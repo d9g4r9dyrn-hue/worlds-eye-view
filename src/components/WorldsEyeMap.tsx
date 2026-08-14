@@ -356,6 +356,7 @@ export function WorldsEyeMap() {
           cams={wall}
           onRemove={(id) => updateWall(wall.filter((cam) => cam.id !== id))}
           onClear={() => updateWall([])}
+          onReorder={updateWall}
           onClose={() => setWallOpen(false)}
         />
       )}
