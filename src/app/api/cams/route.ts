@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { getCatalog } from "@/lib/cams/registry";
 import { isWithin, thinForViewport, type BoundingBox } from "@/lib/cams/spatial";
 import { isKnownUnavailable } from "@/lib/cams/thumbCache";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 import { toPublicCam, type Cam } from "@/lib/cams/types";
+
+/**
+ * One query per pan or zoom, debounced client-side — 120/min is far more
+ * than any real session and still caps a scripted crawl of the catalogue.
+ */
+const RATE_LIMIT = { limit: 120, windowMs: 60_000 };
 
 /**
  * Cameras for the current viewport.
@@ -45,6 +52,14 @@ function countBy(cams: Cam[], pick: (cam: Cam) => string) {
 }
 
 export async function GET(request: Request) {
+  const rate = checkRateLimit(request, "cams", RATE_LIMIT);
+  if (!rate.ok) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { ...rateLimitHeaders(rate), "Retry-After": String(rate.retryAfter) } }
+    );
+  }
+
   const params = new URL(request.url).searchParams;
 
   const south = readNumber(params, "south");

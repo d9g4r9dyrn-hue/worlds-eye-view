@@ -50,7 +50,25 @@ interface SourceState {
   lastError: string | null;
 }
 
-const state = new Map<string, SourceState>();
+/**
+ * Pinned to globalThis rather than being a plain module-level Map.
+ *
+ * Next bundles `instrumentation.ts` separately from the route handlers,
+ * so a module-scoped Map gives the boot-time warm-up its *own* copy of
+ * this state — it would dutifully fetch all 25,000 cameras into an
+ * instance nothing ever reads, and the first real request would still pay
+ * the full 40 seconds. Verified: the warm-up logged 25,622 cameras while
+ * /api/health, running in the request bundle, still reported zero.
+ *
+ * Hanging it off globalThis is the standard Next escape hatch for a
+ * process-wide singleton (the same reason database clients are stored
+ * this way) and additionally survives dev-mode hot reloads.
+ */
+const globalForCams = globalThis as typeof globalThis & {
+  __wevSourceState?: Map<string, SourceState>;
+};
+
+const state: Map<string, SourceState> = (globalForCams.__wevSourceState ??= new Map<string, SourceState>());
 
 function stateFor(key: string): SourceState {
   let existing = state.get(key);
@@ -165,4 +183,34 @@ export async function getCatalog(): Promise<Catalog> {
 export async function getCamById(id: string): Promise<Cam | null> {
   const catalog = await getCatalog();
   return catalog.byId.get(id) ?? null;
+}
+
+export interface CatalogSnapshot {
+  /** True once at least one source has loaded — i.e. the map has something to draw. */
+  warm: boolean;
+  count: number;
+  sources: { key: string; count: number; fetchedAt: number; error: string | null }[];
+}
+
+/**
+ * Reports current state without triggering a load.
+ *
+ * The health endpoint needs this: calling getCatalog() there would start
+ * a ~40-second fetch on a cold process and hang the very check that's
+ * supposed to prove the process is alive.
+ */
+export function peekCatalog(): CatalogSnapshot {
+  let count = 0;
+  const sources = SOURCES.map((entry) => {
+    const current = stateFor(entry.source.key);
+    count += current.cams.length;
+    return {
+      key: entry.source.key,
+      count: current.cams.length,
+      fetchedAt: current.fetchedAt,
+      error: current.lastError,
+    };
+  });
+
+  return { warm: count > 0, count, sources };
 }

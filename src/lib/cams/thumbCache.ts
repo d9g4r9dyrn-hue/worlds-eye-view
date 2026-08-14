@@ -76,16 +76,42 @@ interface CacheEntry extends CachedFrame {
   expiresAt: number;
 }
 
-// Map preserves insertion order, which is all an LRU needs: re-inserting
-// on read moves an entry to the back, so the oldest is always first.
-const cache = new Map<string, CacheEntry>();
-let cacheBytes = 0;
+/**
+ * Pinned to globalThis for the same reason as the registry's state: Next
+ * can compile a shared module into more than one server bundle, and a
+ * per-bundle copy would quietly split this state in two. That matters
+ * most for `failures`, which is written by the thumbnail route and read
+ * by the viewport route — a split there would silently disable the
+ * skip-dead-cameras behaviour, and the only symptom would be occasional
+ * holes in the map.
+ *
+ * Map preserves insertion order, which is all the LRU needs: re-inserting
+ * on read moves an entry to the back, so the oldest is always first.
+ */
+const globalForFrames = globalThis as typeof globalThis & {
+  __wevFrameCache?: Map<string, CacheEntry>;
+  __wevFrameInFlight?: Map<string, Promise<CachedFrame>>;
+  __wevFrameFailures?: Map<string, number>;
+  __wevFrameBytes?: { total: number };
+};
+
+const cache: Map<string, CacheEntry> = (globalForFrames.__wevFrameCache ??= new Map<string, CacheEntry>());
+
+/**
+ * Held in an object rather than a bare `let`, because a primitive can't
+ * be shared by reference across bundles — the byte total would drift out
+ * of step with the shared cache and eviction would stop working.
+ */
+const bytes: { total: number } = (globalForFrames.__wevFrameBytes ??= { total: 0 });
 
 /** Concurrent requests for the same frame share one upstream fetch. */
-const inFlight = new Map<string, Promise<CachedFrame>>();
+const inFlight: Map<string, Promise<CachedFrame>> = (globalForFrames.__wevFrameInFlight ??= new Map<
+  string,
+  Promise<CachedFrame>
+>());
 
 /** cam id -> when it may be tried again. See FAILURE_TTL_SECONDS. */
-const failures = new Map<string, number>();
+const failures: Map<string, number> = (globalForFrames.__wevFrameFailures ??= new Map<string, number>());
 
 function isFailing(key: string): boolean {
   const until = failures.get(key);
@@ -99,9 +125,9 @@ function isFailing(key: string): boolean {
 
 function evictTo(limit: number) {
   for (const [key, entry] of cache) {
-    if (cacheBytes <= limit) break;
+    if (bytes.total <= limit) break;
     cache.delete(key);
-    cacheBytes -= entry.body.byteLength;
+    bytes.total -= entry.body.byteLength;
   }
 }
 
@@ -111,7 +137,7 @@ function readCache(key: string): CachedFrame | null {
 
   if (Date.now() > entry.expiresAt) {
     cache.delete(key);
-    cacheBytes -= entry.body.byteLength;
+    bytes.total -= entry.body.byteLength;
     return null;
   }
 
@@ -125,11 +151,11 @@ function writeCache(key: string, frame: CachedFrame, ttlSeconds: number) {
   const existing = cache.get(key);
   if (existing) {
     cache.delete(key);
-    cacheBytes -= existing.body.byteLength;
+    bytes.total -= existing.body.byteLength;
   }
 
   cache.set(key, { ...frame, expiresAt: Date.now() + ttlSeconds * 1000 });
-  cacheBytes += frame.body.byteLength;
+  bytes.total += frame.body.byteLength;
   evictTo(MAX_CACHE_BYTES);
 }
 

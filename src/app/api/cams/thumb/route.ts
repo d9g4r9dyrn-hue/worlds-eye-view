@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { getCamById } from "@/lib/cams/registry";
 import { browserTtlSeconds, getFrame } from "@/lib/cams/thumbCache";
+import { checkRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
+
+/**
+ * A single map view pulls up to ~140 frames, and a session that sits open
+ * refreshes a slice of those every couple of minutes — so this ceiling
+ * has to be high. 1,200/min still leaves room for several map loads a
+ * minute while stopping a loop from using us to hammer a state DOT's
+ * camera servers.
+ */
+const RATE_LIMIT = { limit: 1200, windowMs: 60_000 };
 
 /**
  * Serves a camera's current frame from our own origin.
@@ -13,6 +23,14 @@ import { browserTtlSeconds, getFrame } from "@/lib/cams/thumbCache";
  */
 
 export async function GET(request: Request) {
+  const rate = checkRateLimit(request, "thumb", RATE_LIMIT);
+  if (!rate.ok) {
+    return new NextResponse(null, {
+      status: 429,
+      headers: { ...rateLimitHeaders(rate), "Retry-After": String(rate.retryAfter) },
+    });
+  }
+
   const params = new URL(request.url).searchParams;
   const id = params.get("id");
   if (!id) return new NextResponse(null, { status: 400 });
