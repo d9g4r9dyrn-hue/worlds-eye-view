@@ -66,12 +66,48 @@ Only one, and it's optional:
    - Value: the target Railway gave you
    - TTL: **lower it from the 1 hour default** if you expect to change it
 
+3. **Add the ownership TXT record.** This is the step that will cost you an
+   hour if you miss it, because nothing tells you it exists:
+
+   | | |
+   | --- | --- |
+   | Type | `TXT` |
+   | Name/Host | `_railway-verify.cams` |
+   | Value | `railway-verify=<token>` |
+
+   Get the token from the API — the Railway dashboard shows it, but the
+   `customDomainCreate` mutation does **not** return it in `dnsRecords`:
+
+   ```graphql
+   query {
+     domains(projectId: "...", environmentId: "...", serviceId: "...") {
+       customDomains { status { verified verificationDnsHost verificationToken } }
+     }
+   }
+   ```
+
 ### If the certificate sticks on VALIDATING_OWNERSHIP
 
-This happened on the first setup and cost about an hour, so it's worth
-writing down.
+**Check the TXT record first.** On first setup this exact thing burned an
+hour and two unnecessary DNS edits.
 
-Check these in order before touching anything:
+The trap: `customDomainCreate` returns a `dnsRecords` array containing
+*only* the CNAME, and once that CNAME resolves, Railway reports it as
+`DNS_RECORD_STATUS_PROPAGATED`. It looks like everything is satisfied. It
+isn't — the ownership TXT is required too, and it's exposed on separate
+fields (`verified`, `verificationDnsHost`, `verificationToken`) that
+aren't part of `dnsRecords`. `verified: false` is the tell, and
+`VALIDATING_OWNERSHIP` means precisely what it says.
+
+```bash
+curl -s "https://dns.google/resolve?name=_railway-verify.cams.corticorp.com&type=TXT"
+```
+
+NXDOMAIN there is the answer. Add the record, call
+`customDomainIssueCertificate(id:)`, and it goes `verified: true` →
+`CERTIFICATE_STATUS_TYPE_VALID` within about a minute.
+
+Only if the TXT is present and correct, check these:
 
 ```bash
 # 1. Is the record right at the source? (bypasses every cache)
@@ -86,15 +122,16 @@ curl -s "https://dns.google/resolve?name=corticorp.com&type=CAA"
 curl -sI http://cams.corticorp.com   # expect 301 -> https
 ```
 
-If all three are fine, the usual cause is simply **resolver caching**: the
+If all of those are fine, the remaining cause is **resolver caching**: the
 GoDaddy record defaults to a 3600s TTL, so public resolvers keep serving
 the old value for up to an hour even though the authoritative servers have
-the new one. Railway can't validate until the cache clears. Wait it out.
+the new one. Wait it out. (Set new records to a 600s TTL to avoid this.)
 
 `customDomainIssueCertificate(id:)` retriggers issuance and is worth one
-attempt. **Deleting and recreating the custom domain is a last resort** —
-it issues a *different* CNAME target, which means another trip to GoDaddy
-and another full TTL wait.
+attempt. **Do not delete and recreate the custom domain** — it issues a
+*different* CNAME target, which means another DNS edit and another full
+TTL wait. It was tried here on a wrong theory and achieved nothing except
+rotating the target from `w7emtra1` to `5ki1mfj4`.
 
 ## 5. Check it worked
 
