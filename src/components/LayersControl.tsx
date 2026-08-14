@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { CamCategory } from "@/lib/cams/types";
 import { CATEGORY_LABELS } from "@/lib/cams/display";
+import type { BaseMap, MapLayersState } from "@/lib/cams/mapLayers";
 
 /**
  * Map control for choosing which cameras to show.
@@ -79,16 +80,29 @@ function FacetRow({
   );
 }
 
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 hover:bg-wev-panel-2">
+      <input type="checkbox" checked={checked} onChange={onChange} className="h-3.5 w-3.5 shrink-0 accent-sky-400" />
+      <span className={`text-xs ${checked ? "text-wev-text" : "text-wev-muted"}`}>{label}</span>
+    </label>
+  );
+}
+
 export function LayersControl({
   categoryFacets,
   providerFacets,
   state,
   onChange,
+  mapLayers,
+  onMapLayersChange,
 }: {
   categoryFacets: Facet[];
   providerFacets: Facet[];
   state: LayersState;
   onChange: (next: LayersState) => void;
+  mapLayers: MapLayersState;
+  onMapLayersChange: (next: MapLayersState) => void;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -127,9 +141,44 @@ export function LayersControl({
       </button>
 
       {open && (
-        <div className="mt-1.5 max-h-[min(30rem,calc(100dvh-9rem))] overflow-y-auto rounded-lg border border-wev-border bg-wev-panel/97 p-2 shadow-2xl backdrop-blur-sm">
-          <div className="mb-1 flex items-center justify-between px-1.5">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-wev-muted">Type</span>
+        <div className="mt-1.5 max-h-[min(32rem,calc(100dvh-9rem))] overflow-y-auto rounded-lg border border-wev-border bg-wev-panel/97 p-2 shadow-2xl backdrop-blur-sm">
+          <div className="mb-1 px-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-wev-muted">Map</span>
+          </div>
+          <div className="mb-1 flex gap-1 px-1.5">
+            {(["satellite", "streets"] as BaseMap[]).map((base) => (
+              <button
+                key={base}
+                type="button"
+                onClick={() => onMapLayersChange({ ...mapLayers, base })}
+                className={`flex-1 rounded border px-2 py-1 text-[11px] capitalize transition-colors ${
+                  mapLayers.base === base
+                    ? "border-sky-700 bg-sky-400/10 text-wev-accent"
+                    : "border-wev-border bg-wev-panel-2 text-wev-muted hover:text-wev-text"
+                }`}
+              >
+                {base}
+              </button>
+            ))}
+          </div>
+          <Toggle
+            label="Roads"
+            checked={mapLayers.roads}
+            onChange={() => onMapLayersChange({ ...mapLayers, roads: !mapLayers.roads })}
+          />
+          <Toggle
+            label="Place names"
+            checked={mapLayers.places}
+            onChange={() => onMapLayersChange({ ...mapLayers, places: !mapLayers.places })}
+          />
+          <Toggle
+            label="Weather radar"
+            checked={mapLayers.weather}
+            onChange={() => onMapLayersChange({ ...mapLayers, weather: !mapLayers.weather })}
+          />
+
+          <div className="mb-1 mt-3 flex items-center justify-between px-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-wev-muted">Camera type</span>
             {state.categories !== null && (
               <button
                 type="button"

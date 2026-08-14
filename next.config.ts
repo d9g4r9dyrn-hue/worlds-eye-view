@@ -11,15 +11,21 @@ const isDev = process.env.NODE_ENV === "development";
  * `img-src` is the interesting line. Camera frames are NOT listed here by
  * host, even though the catalogue spans dozens of third-party origins —
  * every frame is proxied through /api/cams/thumb and therefore arrives
- * from 'self'. The only external image origin is the Esri tile server
- * that draws the map underneath. That's deliberate: it means adding a new
- * camera source never requires touching this policy.
+ * from 'self'. The only external image origins are map tiles: Esri for
+ * the basemap and road/label overlays, and RainViewer for weather radar.
+ * That's deliberate: it means adding a new camera source never requires
+ * touching this policy.
+ *
+ * `connect-src` deliberately stays at 'self'. RainViewer's index (which
+ * names the current radar frame) is fetched by /api/weather/radar on the
+ * server rather than by the page, precisely so this line doesn't have to
+ * grow.
  */
 const cspHeader = `
   default-src 'self';
   script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""};
   style-src 'self' 'unsafe-inline';
-  img-src 'self' blob: data: https://server.arcgisonline.com;
+  img-src 'self' blob: data: https://server.arcgisonline.com https://tilecache.rainviewer.com;
   font-src 'self' data:;
   connect-src 'self';
   object-src 'none';

@@ -10,6 +10,13 @@ import type { PublicCam } from "@/lib/cams/types";
 import { CamDetail } from "./CamDetail";
 import { LayersControl, type Facet, type LayersState } from "./LayersControl";
 import { MulticamDashboard, loadStoredDashboard, storeDashboard } from "./MulticamDashboard";
+import {
+  BASE_TILES,
+  OVERLAY_TILES,
+  loadMapLayers,
+  storeMapLayers,
+  type MapLayersState,
+} from "@/lib/cams/mapLayers";
 
 /**
  * World's Eye View — public webcams quilted onto a satellite map.
@@ -187,6 +194,9 @@ export function WorldsEyeMap() {
   // This component only ever loads with `ssr: false`, so localStorage is
   // already available on the first render and the wall doesn't flash
   // empty before filling in.
+  const [mapLayers, setMapLayersState] = useState<MapLayersState>(loadMapLayers);
+  const [radarTemplate, setRadarTemplate] = useState<string | null>(null);
+
   const [wall, setWall] = useState<PublicCam[]>(loadStoredDashboard);
   const [wallOpen, setWallOpen] = useState(false);
 
@@ -196,6 +206,36 @@ export function WorldsEyeMap() {
     setWall(next);
     storeDashboard(next);
   }, []);
+
+  const setMapLayers = useCallback((next: MapLayersState) => {
+    setMapLayersState(next);
+    storeMapLayers(next);
+  }, []);
+
+  // The radar frame path changes roughly every ten minutes, so the tile
+  // template has to be refreshed rather than hard-coded. Only fetched
+  // while the layer is actually switched on.
+  useEffect(() => {
+    if (!mapLayers.weather) return;
+
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await fetch("/api/weather/radar");
+        const payload = (await response.json()) as { urlTemplate: string | null };
+        if (!cancelled) setRadarTemplate(payload.urlTemplate);
+      } catch {
+        if (!cancelled) setRadarTemplate(null);
+      }
+    };
+
+    void load();
+    const timer = setInterval(load, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [mapLayers.weather]);
 
   // Guards against a slow response for an old viewport landing after a
   // fast one for the current viewport and overwriting it.
@@ -273,15 +313,27 @@ export function WorldsEyeMap() {
       >
         <ZoomControl position="bottomright" />
 
+        {/* Keyed so switching basemap swaps the layer rather than
+            mutating the existing one's URL, which Leaflet handles badly. */}
         <TileLayer
-          attribution="Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community"
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+          key={mapLayers.base}
+          attribution={BASE_TILES[mapLayers.base].attribution}
+          url={BASE_TILES[mapLayers.base].url}
           maxZoom={17}
         />
-        <TileLayer
-          url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-          maxZoom={17}
-        />
+        {mapLayers.roads && <TileLayer url={OVERLAY_TILES.roads} maxZoom={17} />}
+        {mapLayers.places && <TileLayer url={OVERLAY_TILES.places} maxZoom={17} />}
+        {mapLayers.weather && radarTemplate && (
+          <TileLayer
+            key={radarTemplate}
+            url={radarTemplate}
+            // Radar is a wash of colour over the whole frame; at full
+            // strength it buries both the terrain and the thumbnails.
+            opacity={0.5}
+            attribution="Radar &copy; RainViewer"
+            maxZoom={17}
+          />
+        )}
 
         <ViewportWatcher onChange={setViewport} />
         <UrlSync />
@@ -312,6 +364,8 @@ export function WorldsEyeMap() {
           providerFacets={data.facets.providers}
           state={layers}
           onChange={setLayers}
+          mapLayers={mapLayers}
+          onMapLayersChange={setMapLayers}
         />
       )}
 
