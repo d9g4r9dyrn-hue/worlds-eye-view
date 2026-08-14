@@ -50,6 +50,9 @@ const SOURCES: RegisteredSource[] = [
   // roster points at frames that no longer exist — same failure mode as
   // AVO, and the same short TTL.
   { source: singaporeSource, ttlMs: 10 * MINUTE },
+  // Six hours is safe despite Windy's 10-minute image-URL expiry: the
+  // roster stores only durable metadata and mints a fresh URL per camera
+  // at view time. See sources/windy.ts.
   { source: windySource, ttlMs: 6 * HOUR },
 ];
 

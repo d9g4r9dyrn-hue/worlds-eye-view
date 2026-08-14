@@ -42,6 +42,21 @@ export interface Cam {
    * /api/cams/thumb proxy is what fetches this (see the route for why).
    */
   stillUrl: string;
+  /**
+   * Optional: resolve the image URL at fetch time instead of trusting the
+   * one captured when the roster was built.
+   *
+   * Exists for sources that hand out short-lived, signed URLs — Windy's
+   * free tier expires them after 10 minutes, far sooner than any sane
+   * roster refresh. Rather than re-reading a whole catalogue every few
+   * minutes to keep links alive, those sources leave the durable metadata
+   * (coordinates, title, category) in the roster and mint a fresh URL only
+   * for cameras somebody actually looks at.
+   *
+   * Server-side only, and never serialised — `toPublicCam` builds its
+   * result field by field, so this can't leak to the browser.
+   */
+  resolveStillUrl?: (cam: Cam) => Promise<string>;
   /** Roughly how often the upstream image actually changes. Sets the thumbnail cache TTL. */
   refreshSeconds: number;
   /** Human-facing page for this cam — attribution, and "view the original". */

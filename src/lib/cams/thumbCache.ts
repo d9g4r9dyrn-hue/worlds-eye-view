@@ -160,14 +160,19 @@ function writeCache(key: string, frame: CachedFrame, ttlSeconds: number) {
 }
 
 async function fetchUpstream(cam: Cam): Promise<Buffer> {
+  // Sources handing out short-lived signed URLs mint a fresh one here
+  // rather than relying on whatever the roster captured. See
+  // Cam.resolveStillUrl.
+  const stillUrl = cam.resolveStillUrl ? await cam.resolveStillUrl(cam) : cam.stillUrl;
+
   // The catalogue is built from third-party feeds, one of which is
   // scraped HTML — so these URLs are externally controlled and get the
   // same SSRF check every other outbound fetch in this codebase uses.
-  if (!(await isUrlSafeToFetch(cam.stillUrl))) {
+  if (!(await isUrlSafeToFetch(stillUrl))) {
     throw new Error(`refusing to fetch unsafe URL for ${cam.id}`);
   }
 
-  const response = await fetch(cam.stillUrl, {
+  const response = await fetch(stillUrl, {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
