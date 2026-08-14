@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents, ZoomControl } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Polyline, useMap, useMapEvents, ZoomControl } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { thumbSize } from "@/lib/cams/spatial";
@@ -11,6 +11,7 @@ import { CamDetail } from "./CamDetail";
 import { LayersControl, type Facet, type LayersState } from "./LayersControl";
 import { MulticamDashboard, loadStoredDashboard, storeDashboard } from "./MulticamDashboard";
 import { useDashboards } from "@/lib/useDashboards";
+import { RoutePanel, type RouteResult } from "./RoutePanel";
 import {
   BASE_TILES,
   OVERLAY_TILES,
@@ -120,6 +121,32 @@ function readViewport(map: L.Map): ViewportState {
   };
 }
 
+/**
+ * Frames a newly-planned route.
+ *
+ * Without this the route is drawn wherever you happen to be looking,
+ * which for a Tampa-to-Orlando search while viewing Finland means an
+ * invisible result and an apparently broken feature.
+ */
+function RouteFitter({ result }: { result: RouteResult | null }) {
+  const map = useMap();
+  const lastFitted = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!result || result.route.path.length < 2) return;
+    // Only fit once per route, or every background refresh would yank the
+    // map back and fight the user panning along the road.
+    const key = `${result.start.lat},${result.start.lon}->${result.end.lat},${result.end.lon}`;
+    if (lastFitted.current === key) return;
+    lastFitted.current = key;
+
+    const bounds = L.latLngBounds(result.route.path.map((point) => [point.lat, point.lon] as [number, number]));
+    map.fitBounds(bounds, { padding: [60, 60] });
+  }, [result, map]);
+
+  return null;
+}
+
 /** Reports the viewport after the user stops moving, so a drag is one request rather than sixty. */
 function ViewportWatcher({ onChange }: { onChange: (viewport: ViewportState) => void }) {
   const map = useMap();
@@ -197,6 +224,7 @@ export function WorldsEyeMap() {
   // empty before filling in.
   const [mapLayers, setMapLayersState] = useState<MapLayersState>(loadMapLayers);
   const [radarTemplate, setRadarTemplate] = useState<string | null>(null);
+  const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
 
   const library = useDashboards();
 
@@ -341,6 +369,22 @@ export function WorldsEyeMap() {
         <ViewportWatcher onChange={setViewport} />
         <UrlSync />
         <FrameErrorHandler />
+        <RouteFitter result={routeResult} />
+
+        {routeResult && (
+          <>
+            {/* Drawn twice: a wide dark casing under a bright line, so the
+                route stays readable over both pale desert and dark ocean. */}
+            <Polyline
+              positions={routeResult.route.path.map((p) => [p.lat, p.lon] as [number, number])}
+              pathOptions={{ color: "#04202e", weight: 8, opacity: 0.75 }}
+            />
+            <Polyline
+              positions={routeResult.route.path.map((p) => [p.lat, p.lon] as [number, number])}
+              pathOptions={{ color: "#38bdf8", weight: 3.5, opacity: 0.95 }}
+            />
+          </>
+        )}
 
         {cams.map((cam) => (
           <Marker
@@ -371,6 +415,18 @@ export function WorldsEyeMap() {
           onMapLayersChange={setMapLayers}
         />
       )}
+
+      <RoutePanel
+        result={routeResult}
+        onResult={setRouteResult}
+        onClear={() => setRouteResult(null)}
+        onSendToWall={(cams) => {
+          // Replaces rather than appends: a route is a complete itinerary,
+          // and merging it into an unrelated wall gives neither.
+          updateWall(cams);
+          setWallOpen(true);
+        }}
+      />
 
       <button
         type="button"

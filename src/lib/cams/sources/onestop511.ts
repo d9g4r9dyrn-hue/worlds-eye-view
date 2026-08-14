@@ -256,6 +256,22 @@ interface CameraRecord {
   latLng?: { geography?: { wellKnownText?: string } };
 }
 
+/**
+ * Some records carry a literal placeholder where the location should be —
+ * Florida publishes "[not provided]" for 31 of its ~4,900 cameras, and a
+ * couple more are blank. Treated as text it becomes the camera's name on
+ * the map, which looks like a bug in this app rather than a gap in the
+ * feed. Rare enough to ignore in aggregate, but it surfaced immediately
+ * on a twelve-camera route where four tiles read "[not provided]".
+ */
+function meaningful(value: string | null | undefined): string | null {
+  const text = value?.trim();
+  if (!text) return null;
+  if (/^\[[^\]]*\]$/.test(text)) return null;
+  if (/^(n\/?a|unknown|not provided|-+)$/i.test(text)) return null;
+  return text;
+}
+
 /** Coordinates arrive as WKT — `POINT (-75.90045 40.30142)`, lon first. */
 function parsePoint(wkt: string | undefined): { lat: number; lon: number } | null {
   if (!wkt) return null;
@@ -316,8 +332,11 @@ function toCams(site: StateSite, rows: CameraRecord[]): Cam[] {
 
     cams.push({
       id: `511${site.key}:${row.id}`,
-      title: row.location?.trim() || row.roadway?.trim() || "Traffic camera",
-      place: row.city?.trim() || row.county?.trim() || row.roadway?.trim() || site.region,
+      title:
+        meaningful(row.location) ??
+        meaningful(row.roadway) ??
+        `${site.region} camera ${row.id}`,
+      place: meaningful(row.city) ?? meaningful(row.county) ?? meaningful(row.roadway) ?? site.region,
       country: site.country,
       lat: point.lat,
       lon: point.lon,
