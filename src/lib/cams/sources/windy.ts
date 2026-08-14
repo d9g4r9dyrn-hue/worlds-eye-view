@@ -110,9 +110,26 @@ function apiKey(): string | null {
   return process.env.WINDY_API_KEY || null;
 }
 
+/** The site these calls are made on behalf of. See windyFetch. */
+const SITE_ORIGIN = "https://cams.corticorp.com";
+
 async function windyFetch(url: URL | string, key: string): Promise<Response> {
   return fetch(url, {
-    headers: { "x-windy-api-key": key },
+    headers: {
+      "x-windy-api-key": key,
+      // Windy's optional key setting restricts a key to named domains,
+      // and that check is normally made against Referer/Origin. These
+      // calls are made server-side, where neither header exists by
+      // default — so a domain-restricted key would reject them.
+      //
+      // Sending them explicitly means the restriction can be switched on
+      // without breaking anything. It costs nothing when no restriction
+      // is set, and it's honest: the request really is made on behalf of
+      // this site.
+      Referer: `${SITE_ORIGIN}/`,
+      Origin: SITE_ORIGIN,
+      "User-Agent": "CorticorpWorldsEyeView/1.0 (+https://cams.corticorp.com)",
+    },
     signal: AbortSignal.timeout(30_000),
     cache: "no-store",
   });
