@@ -13,18 +13,25 @@ continent, or a city dark hours before its neighbour.
 
 ## Where the cameras come from
 
-Around **25,000 cameras**, all from feeds that are public and need no key:
+Around **26,700 cameras**, all from feeds that are public and need no key:
 
 | Source | Roughly | Covers |
 | --- | --- | --- |
-| 511 traveler-information sites | 21,000 | 14 US states + 8 Canadian provinces/territories |
+| 511 traveler-information sites | 21,400 | 14 US states + 8 Canadian provinces/territories |
 | Caltrans CCTV | 3,400 | California highways |
+| Fintraffic | 810 | Finland — the far north gets genuine polar night |
 | Transport for London JamCams | 780 | Greater London |
+| NZ Transport Agency | 260 | New Zealand — the only southern-hemisphere source |
 | USGS Alaska Volcano Observatory | 64 | Alaska volcanoes and downwind communities |
+| LTA Singapore | 8 | Singapore expressways — small, but the only Asian source |
 | Windy Webcams *(optional)* | — | Worldwide, needs `WINDY_API_KEY` |
 
-Without a Windy key the map still works; coverage is just North America
-and London. Windy is what fills in the rest of the world and the
+New Zealand matters out of proportion to its size: without a
+southern-hemisphere source the day/night terminator on a world view only
+ever sweeps the top half of the map.
+
+Without a Windy key the map still works; coverage is North America,
+northern Europe, Singapore and New Zealand. Windy is what fills in the rest of the world and the
 observatory/zoo/landmark cameras, which are almost all stream-only
 elsewhere.
 

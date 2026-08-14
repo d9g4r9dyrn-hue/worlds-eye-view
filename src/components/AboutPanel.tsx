@@ -17,6 +17,13 @@ const SOURCES: { name: string; detail: string; href: string }[] = [
     href: "https://fl511.com",
   },
   { name: "Caltrans", detail: "California highway CCTV", href: "https://cwwp2.dot.ca.gov/vm/iframemap.htm" },
+  { name: "Fintraffic", detail: "Road weather cameras across Finland", href: "https://liikennetilanne.fintraffic.fi/" },
+  {
+    name: "NZ Transport Agency Waka Kotahi",
+    detail: "State highway cameras across New Zealand",
+    href: "https://www.journeys.nzta.govt.nz/traffic-cameras",
+  },
+  { name: "LTA Singapore", detail: "Expressway cameras, via data.gov.sg", href: "https://data.gov.sg" },
   { name: "Transport for London", detail: "JamCams across Greater London", href: "https://www.tfl.gov.uk/traffic/status" },
   {
     name: "USGS Alaska Volcano Observatory",

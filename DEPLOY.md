@@ -11,18 +11,39 @@ way this differs from the news deploy — the catalogue lives in memory and
 rebuilds itself on boot, so there is nothing to persist and nothing to
 back up. A restart costs about 40 seconds of warm-up on the first request.
 
-## 1. Push the repo to GitHub
+## Current state
 
-The repo is `worlds-eye-view` (this folder). Create an empty GitHub repo
-and push, or use `gh repo create`:
+Already deployed and live. What exists right now:
+
+| | |
+| --- | --- |
+| Railway project | `worlds-eye-view` (`6f7bd2b7-0f17-4809-afb6-a8e37d023f3e`) |
+| Service | `web` (`d207d785-a776-41ea-9e86-a277002da3f6`) |
+| Fallback URL | https://web-production-05942.up.railway.app |
+| Custom domain | cams.corticorp.com |
+| GitHub | https://github.com/d9g4r9dyrn-hue/worlds-eye-view (public) |
+
+**Deploys are currently manual.** Railway's GitHub App is only authorised
+for `corticorpmusic-oss/news`, so it cannot read this repo — creating the
+project from the repo fails with "Failed to fetch repository files". The
+service is therefore deployed from local source instead:
 
 ```bash
-gh repo create worlds-eye-view --private --source=. --push
+export RAILWAY_API_TOKEN=<account token>
+npx @railway/cli up --detach --service web
 ```
 
-## 2. Create the Railway service
+That works fine, but **a `git push` does not redeploy anything.** To fix
+that properly, grant the Railway GitHub App access to
+`d9g4r9dyrn-hue/worlds-eye-view` (GitHub → Settings → Applications →
+Railway → Repository access), then connect the repo in the service's
+settings. After that, pushes to `master` deploy on their own.
 
-1. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo** → select `worlds-eye-view`.
+## Setting it up from scratch
+
+Only needed if the service is ever recreated.
+
+1. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub repo** → select `worlds-eye-view` (requires the GitHub App access above).
 2. Railway auto-detects Next.js and runs `npm install && npm run build`, then `npm start`. No configuration needed — `package.json` already has the right scripts, and `next start` picks up Railway's `PORT`.
 
 Nothing else is required. There is deliberately no volume to mount and no
@@ -43,8 +64,37 @@ Only one, and it's optional:
    - Type: `CNAME`
    - Name/Host: `cams`
    - Value: the target Railway gave you
-   - TTL: default
-3. Propagation is usually minutes.
+   - TTL: **lower it from the 1 hour default** if you expect to change it
+
+### If the certificate sticks on VALIDATING_OWNERSHIP
+
+This happened on the first setup and cost about an hour, so it's worth
+writing down.
+
+Check these in order before touching anything:
+
+```bash
+# 1. Is the record right at the source? (bypasses every cache)
+NS=$(curl -s "https://dns.google/resolve?name=corticorp.com&type=NS" | ...)
+nslookup -type=CNAME cams.corticorp.com ns52.domaincontrol.com
+
+# 2. Is a CAA record blocking issuance? Windows nslookup CANNOT query CAA
+#    and fails silently with "unknown query type" — use DoH.
+curl -s "https://dns.google/resolve?name=corticorp.com&type=CAA"
+
+# 3. Is Railway's edge answering for the hostname at all?
+curl -sI http://cams.corticorp.com   # expect 301 -> https
+```
+
+If all three are fine, the usual cause is simply **resolver caching**: the
+GoDaddy record defaults to a 3600s TTL, so public resolvers keep serving
+the old value for up to an hour even though the authoritative servers have
+the new one. Railway can't validate until the cache clears. Wait it out.
+
+`customDomainIssueCertificate(id:)` retriggers issuance and is worth one
+attempt. **Deleting and recreating the custom domain is a last resort** —
+it issues a *different* CNAME target, which means another trip to GoDaddy
+and another full TTL wait.
 
 ## 5. Check it worked
 

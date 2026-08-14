@@ -178,9 +178,15 @@ async function fetchUpstream(cam: Cam): Promise<Buffer> {
   });
   if (!response.ok) throw new Error(`${cam.id} upstream responded ${response.status}`);
 
-  const declared = response.headers.get("content-type") ?? "";
-  // Some feeds answer a dead camera with an HTML error page and a 200.
-  if (declared && !declared.startsWith("image/")) {
+  // Some feeds answer a dead camera with an HTML error page and a 200, so
+  // an obviously textual content-type is worth rejecting before reading
+  // the body. But a *missing* or generic type is not evidence of failure:
+  // Singapore's camera images are served as application/octet-stream, and
+  // an image/* allowlist here silently dropped that entire country. The
+  // authoritative check is whether sharp can decode it, which happens in
+  // loadFrame.
+  const declared = (response.headers.get("content-type") ?? "").toLowerCase();
+  if (declared.startsWith("text/") || declared.includes("json") || declared.includes("xml")) {
     throw new Error(`${cam.id} upstream returned ${declared}, not an image`);
   }
 
@@ -212,6 +218,17 @@ async function isPlaceholderCard(original: Buffer): Promise<boolean> {
 
 async function loadFrame(cam: Cam, thumbnail: boolean): Promise<CachedFrame> {
   const original = await fetchUpstream(cam);
+
+  // The real "is this an image?" test, independent of what the upstream
+  // claimed in its headers. Runs for both sizes so a full-size request
+  // can't serve something undecodable straight through to the browser.
+  let format: string | undefined;
+  try {
+    format = (await sharp(original, { failOn: "none" }).metadata()).format;
+  } catch {
+    throw new Error(`${cam.id} upstream body is not a decodable image`);
+  }
+  if (!format) throw new Error(`${cam.id} upstream body is not a decodable image`);
 
   if (await isPlaceholderCard(original)) {
     // Treated exactly like an unreachable camera: the map hides the tile

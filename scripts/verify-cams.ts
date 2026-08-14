@@ -17,6 +17,9 @@
 import { caltransSource } from "../src/lib/cams/sources/caltrans";
 import { oneStop511Source } from "../src/lib/cams/sources/onestop511";
 import { tflSource } from "../src/lib/cams/sources/tfl";
+import { digitrafficSource } from "../src/lib/cams/sources/digitraffic";
+import { nztaSource } from "../src/lib/cams/sources/nzta";
+import { singaporeSource } from "../src/lib/cams/sources/singapore";
 import { avoSource } from "../src/lib/cams/sources/avo";
 import { windySource } from "../src/lib/cams/sources/windy";
 import { curatedSource, PROMOTIONS } from "../src/lib/cams/sources/curated";
@@ -28,6 +31,9 @@ const SOURCES: CamSource[] = [
   caltransSource,
   oneStop511Source,
   tflSource,
+  digitrafficSource,
+  nztaSource,
+  singaporeSource,
   windySource,
 ];
 
@@ -57,8 +63,14 @@ async function checkFrame(cam: Cam): Promise<{ ok: boolean; detail: string }> {
     });
     if (!response.ok) return { ok: false, detail: `HTTP ${response.status}` };
 
-    const type = response.headers.get("content-type") ?? "(none)";
-    if (!type.startsWith("image/")) return { ok: false, detail: `content-type ${type}` };
+    // Mirrors the proxy's rule (see thumbCache.fetchUpstream): reject an
+    // obviously textual body, but don't demand image/*. Singapore serves
+    // real JPEGs as application/octet-stream, and an image/* allowlist
+    // here reported an entire working country as dead.
+    const type = (response.headers.get("content-type") ?? "").toLowerCase();
+    if (type.startsWith("text/") || type.includes("json") || type.includes("xml")) {
+      return { ok: false, detail: `content-type ${type}` };
+    }
 
     const bytes = (await response.arrayBuffer()).byteLength;
     if (bytes === 0) return { ok: false, detail: "empty body" };
