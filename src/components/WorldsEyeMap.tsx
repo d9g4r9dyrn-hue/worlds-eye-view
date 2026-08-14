@@ -10,6 +10,7 @@ import type { PublicCam } from "@/lib/cams/types";
 import { CamDetail } from "./CamDetail";
 import { LayersControl, type Facet, type LayersState } from "./LayersControl";
 import { MulticamDashboard, loadStoredDashboard, storeDashboard } from "./MulticamDashboard";
+import { useDashboards } from "@/lib/useDashboards";
 import {
   BASE_TILES,
   OVERLAY_TILES,
@@ -196,6 +197,8 @@ export function WorldsEyeMap() {
   // empty before filling in.
   const [mapLayers, setMapLayersState] = useState<MapLayersState>(loadMapLayers);
   const [radarTemplate, setRadarTemplate] = useState<string | null>(null);
+
+  const library = useDashboards();
 
   const [wall, setWall] = useState<PublicCam[]>(loadStoredDashboard);
   const [wallOpen, setWallOpen] = useState(false);
@@ -412,6 +415,21 @@ export function WorldsEyeMap() {
           onClear={() => updateWall([])}
           onReorder={updateWall}
           onClose={() => setWallOpen(false)}
+          library={{
+            signedIn: library.signedIn,
+            dashboards: library.dashboards,
+            activeId: library.activeId,
+            // Loading a saved wall replaces the working wall, which also
+            // writes it to localStorage — so it survives a sign-out.
+            onLoad: (dashboard) => {
+              updateWall(dashboard.cams);
+              library.setActiveId(dashboard.id);
+            },
+            onCreate: library.create,
+            onUpdate: library.update,
+            onRename: (id, name) => library.update(id, { name }),
+            onDelete: library.remove,
+          }}
         />
       )}
     </div>

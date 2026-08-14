@@ -4,13 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { EyeGlobeMark, Wordmark } from "./Wordmark";
 import { AboutPanel } from "./AboutPanel";
+import { AuthMenu } from "./AuthMenu";
 
 /**
  * Deliberately slim. The map is the product, so the chrome is one 48px
  * bar: the mark, the wordmark, and the two things anyone actually needs
  * (what this is, and where it came from).
  */
-export function SiteHeader() {
+export function SiteHeader({ authEnabled }: { authEnabled: boolean }) {
   const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
@@ -33,10 +34,11 @@ export function SiteHeader() {
             href="https://corticorp.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded px-2.5 py-1.5 text-xs text-wev-muted transition-colors hover:bg-wev-panel-2 hover:text-wev-text"
+            className="hidden rounded px-2.5 py-1.5 text-xs text-wev-muted transition-colors hover:bg-wev-panel-2 hover:text-wev-text sm:inline-block"
           >
             CortiCorp
           </a>
+          <AuthMenu enabled={authEnabled} />
         </nav>
       </header>
 

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PublicCam } from "@/lib/cams/types";
 import { thumbUrl, versionFor } from "@/lib/cams/display";
+import { DashboardPicker } from "./DashboardPicker";
+import type { SavedDashboard } from "@/lib/useDashboards";
 
 /**
  * A wall of cameras, built from whatever you've sent over from the map.
@@ -150,18 +152,31 @@ function DashboardTile({
   );
 }
 
+export interface DashboardLibrary {
+  signedIn: boolean;
+  dashboards: SavedDashboard[];
+  activeId: number | null;
+  onLoad: (dashboard: SavedDashboard) => void;
+  onCreate: (name: string, cams: PublicCam[], columns: number | null) => Promise<unknown>;
+  onUpdate: (id: number, patch: { cams?: PublicCam[]; columns?: number | null }) => Promise<unknown>;
+  onRename: (id: number, name: string) => Promise<unknown>;
+  onDelete: (id: number) => Promise<unknown>;
+}
+
 export function MulticamDashboard({
   cams,
   onRemove,
   onClear,
   onReorder,
   onClose,
+  library,
 }: {
   cams: PublicCam[];
   onRemove: (id: string) => void;
   onClear: () => void;
   onReorder: (cams: PublicCam[]) => void;
   onClose: () => void;
+  library: DashboardLibrary;
 }) {
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
   const [columnOverride, setColumnOverride] = useState<number | null>(loadStoredColumns);
@@ -316,12 +331,27 @@ export function MulticamDashboard({
         }
       >
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-wev-border px-3 py-2.5 sm:px-4">
-          <h2 className="text-sm font-semibold text-wev-text">
-            Multicam
-            <span className="ml-2 font-normal text-wev-muted">
-              {cams.length} {cams.length === 1 ? "camera" : "cameras"} · {columns}&times;{rows}
-            </span>
-          </h2>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <h2 className="text-sm font-semibold text-wev-text">
+              Multicam
+              <span className="ml-2 font-normal text-wev-muted">
+                {cams.length} {cams.length === 1 ? "camera" : "cameras"} · {columns}&times;{rows}
+              </span>
+            </h2>
+            {library.signedIn && (
+              <DashboardPicker
+                dashboards={library.dashboards}
+                activeId={library.activeId}
+                currentCams={cams}
+                currentColumns={columnOverride}
+                onLoad={library.onLoad}
+                onCreate={library.onCreate}
+                onUpdate={library.onUpdate}
+                onRename={library.onRename}
+                onDelete={library.onDelete}
+              />
+            )}
+          </div>
 
           <div className="flex items-center gap-1">
             <div className="mr-1 flex items-center gap-0.5 rounded border border-wev-border bg-wev-panel-2 px-1">
