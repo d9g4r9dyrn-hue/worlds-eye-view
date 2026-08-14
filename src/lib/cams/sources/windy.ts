@@ -22,7 +22,7 @@ import type { Cam, CamCategory, CamSource } from "../types";
  *
  * **Offset is capped at 1,000 webcams.** So this can reach ~1,000
  * cameras, not the tens of thousands Windy holds; the professional tier
- * that lifts it to 10,000 is €9,990/year. Because the reachable slice is
+ * that lifts the cap to 10,000 is €9,990/year. Because the reachable slice is
  * small and arbitrary, these are given a higher prominence than the
  * traffic feeds — a thousand cameras spread over entire continents should
  * win their thumbnail slots, since outside North America they are often
@@ -35,10 +35,12 @@ const ENDPOINT = "https://api.windy.com/webcams/api/v3/webcams";
 const PAGE_SIZE = 50;
 
 /**
- * Free tier refuses offsets beyond this, so paging further returns
- * nothing. 20 pages of 50.
+ * The free tier's hard ceiling, established by probing rather than from
+ * the docs: offset 1000 still returns a full page of 50, offset 1050
+ * returns nothing. So the reachable slice is offsets 0-1049 — about 1,050
+ * cameras out of the 70,538 Windy actually holds.
  */
-const MAX_OFFSET = 1_000;
+const MAX_OFFSET = 1_050;
 
 /** How long a minted image URL is treated as usable. Windy's free tier expires them at 10 minutes. */
 export const WINDY_URL_TTL_SECONDS = 480;
