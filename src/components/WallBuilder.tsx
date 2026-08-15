@@ -278,10 +278,10 @@ export function WallBuilder({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-2 rounded-lg border border-wev-border bg-wev-panel/95 px-2.5 py-2 text-xs font-medium text-wev-text shadow-lg backdrop-blur-sm transition-colors hover:bg-wev-panel-2"
+        className="flex items-center gap-1.5 rounded-lg border border-wev-border bg-wev-panel/95 px-2 py-1.5 text-[11px] font-medium text-wev-text shadow-lg backdrop-blur-sm transition-colors hover:bg-wev-panel-2 sm:gap-2 sm:px-2.5 sm:py-2 sm:text-xs"
       >
         <span className="flex items-center gap-2">
-          <svg viewBox="0 0 24 24" className="h-4 w-4 text-wev-accent" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-wev-accent sm:h-4 sm:w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="6" cy="19" r="2.2" />
             <circle cx="18" cy="5" r="2.2" />
             <path d="M8 18.5c6.5-1 3.5-12 8-13" />

@@ -117,10 +117,10 @@ export function LayersControl({
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-2 rounded-lg border border-wev-border bg-wev-panel/95 px-2.5 py-2 text-xs font-medium text-wev-text shadow-lg backdrop-blur-sm transition-colors hover:bg-wev-panel-2"
+        className="flex items-center gap-1.5 rounded-lg border border-wev-border bg-wev-panel/95 px-2 py-1.5 text-[11px] font-medium text-wev-text shadow-lg backdrop-blur-sm transition-colors hover:bg-wev-panel-2 sm:gap-2 sm:px-2.5 sm:py-2 sm:text-xs"
       >
         <span className="flex items-center gap-2">
-          <svg viewBox="0 0 24 24" className="h-4 w-4 text-wev-accent" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-wev-accent sm:h-4 sm:w-4" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
             <path d="m12 3 9 5-9 5-9-5 9-5Z" />
             <path d="m3.5 12.5 8.5 4.7 8.5-4.7" />
           </svg>
