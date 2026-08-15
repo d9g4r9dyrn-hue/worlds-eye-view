@@ -41,6 +41,28 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/**
+ * Touch devices: form controls must never be smaller than 16px.
+ *
+ * iOS Safari zooms the page in whenever a focused input's font-size is
+ * below 16px, and — this is the part that makes it a real bug rather
+ * than a quirk — it does not zoom back out on blur. Typing two place
+ * names into the route panel therefore left the whole map zoomed in,
+ * with the panels sized against a layout viewport wider than the
+ * visible one, so the multicam button sat off-screen and nothing but a
+ * reload would put it back.
+ *
+ * Scoped to coarse pointers so the compact 11-12px chrome the desktop
+ * layout is built around is untouched.
+ */
+@media (pointer: coarse) {
+  input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Leaflet paints its own light-grey backdrop between tiles, which flashes
    on every pan. Matching it to the page background hides the seam. */
 .leaflet-container {

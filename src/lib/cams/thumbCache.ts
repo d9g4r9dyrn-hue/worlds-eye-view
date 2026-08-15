@@ -318,3 +318,75 @@ export function browserTtlSeconds(cam: Cam): number {
 export function isKnownUnavailable(camId: string): boolean {
   return isFailing(`${camId}|t`);
 }
+
+/**
+ * Picks `want` cameras that are actually serving a frame right now.
+ *
+ * `isKnownUnavailable` only reports cameras we have already watched fail,
+ * which is the wrong tool for building a wall: the first time anyone
+ * routes through a region, none of its cameras have been fetched, nothing
+ * is "known" bad, and the wall fills up with dead tiles. This asks.
+ *
+ * Candidates are tried in order and the first `want` that answer are
+ * kept, so a caller can hand over a generous ordered shortlist and get
+ * back its best surviving prefix — order carries meaning (distance along
+ * a route, distance from a point) and must be preserved.
+ *
+ * Probing is not free, but it is not wasted either: a successful probe
+ * leaves the frame in the same cache the wall reads from moments later,
+ * so the tiles it selects are also the tiles that render instantly.
+ *
+ * Failures here are ordinary — a camera being down is the normal case
+ * this exists to detect — so they are swallowed rather than logged.
+ */
+export async function selectLiveCams<T>(
+  candidates: T[],
+  want: number,
+  resolve: (item: T) => Cam | undefined,
+  { concurrency = 8, budgetMs = 9_000 }: { concurrency?: number; budgetMs?: number } = {}
+): Promise<T[]> {
+  if (want <= 0 || candidates.length === 0) return [];
+
+  const deadline = Date.now() + budgetMs;
+  const verdicts = new Array<boolean | undefined>(candidates.length);
+  let next = 0;
+  let confirmed = 0;
+
+  async function worker() {
+    while (true) {
+      const index = next++;
+      if (index >= candidates.length) return;
+
+      // Enough survivors already found, or out of time. Indices are handed
+      // out in ascending order, so the probed set is a prefix give or take
+      // the concurrency window — stopping here can only cost us a better
+      // ordered candidate within that window, never correctness.
+      if (confirmed >= want || Date.now() > deadline) return;
+
+      const cam = resolve(candidates[index]);
+      if (!cam) {
+        verdicts[index] = false;
+        continue;
+      }
+      try {
+        await getFrame(cam, true);
+        verdicts[index] = true;
+        confirmed++;
+      } catch {
+        verdicts[index] = false;
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, candidates.length) }, worker));
+
+  const live = candidates.filter((_, index) => verdicts[index] === true);
+  if (live.length >= want) return live.slice(0, want);
+
+  // Ran out of budget before confirming enough. Rather than return a
+  // short wall, top up with the un-probed candidates in their original
+  // order — unknown beats absent, and the tile's own error state covers
+  // the ones that turn out to be dead.
+  const unknown = candidates.filter((_, index) => verdicts[index] === undefined);
+  return [...live, ...unknown].slice(0, want);
+}

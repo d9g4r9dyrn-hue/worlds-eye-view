@@ -147,6 +147,45 @@ function RouteFitter({ result }: { result: RouteResult | null }) {
   return null;
 }
 
+/**
+ * Fixed stacking order for the tile overlays.
+ *
+ * Every TileLayer otherwise lands in Leaflet's single `tilePane`, where
+ * stacking follows the order layers were *added* — not the order they
+ * appear in the JSX. Because the overlays are toggled independently,
+ * that order is whatever sequence the user happened to click, so radar
+ * switched on after the labels would paint over them. Naming a pane per
+ * overlay and giving it an explicit z-index makes the arrangement a
+ * property of the map instead of an accident of the session:
+ *
+ *   200  tilePane      basemap (Leaflet's default)
+ *   210  wev-radar     precipitation
+ *   220  wev-reference roads and place names
+ *   600  markerPane    camera thumbnails (Leaflet's default)
+ *
+ * So weather washes over the imagery, roads and names stay readable
+ * through it, and no tile layer ever covers a camera.
+ */
+export const RADAR_PANE = "wev-radar";
+export const REFERENCE_PANE = "wev-reference";
+
+function MapPanes() {
+  const map = useMap();
+  useEffect(() => {
+    for (const [name, zIndex] of [
+      [RADAR_PANE, 210],
+      [REFERENCE_PANE, 220],
+    ] as const) {
+      // createPane is idempotent by name, but setting the z-index is not
+      // — Leaflet returns the existing element, so guard the assignment
+      // to avoid clobbering it on a re-render.
+      const pane = map.getPane(name) ?? map.createPane(name);
+      if (pane.style.zIndex !== String(zIndex)) pane.style.zIndex = String(zIndex);
+    }
+  }, [map]);
+  return null;
+}
+
 /** Reports the viewport after the user stops moving, so a drag is one request rather than sixty. */
 function ViewportWatcher({ onChange }: { onChange: (viewport: ViewportState) => void }) {
   const map = useMap();
@@ -343,6 +382,7 @@ export function WorldsEyeMap() {
         className="h-full w-full"
       >
         <ZoomControl position="bottomright" />
+        <MapPanes />
 
         {/* Keyed so switching basemap swaps the layer rather than
             mutating the existing one's URL, which Leaflet handles badly. */}
@@ -352,19 +392,32 @@ export function WorldsEyeMap() {
           url={BASE_TILES[mapLayers.base].url}
           maxZoom={17}
         />
-        {mapLayers.roads && <TileLayer url={OVERLAY_TILES.roads} maxZoom={17} />}
-        {mapLayers.places && <TileLayer url={OVERLAY_TILES.places} maxZoom={17} />}
+        {/* Panes fix the stacking regardless of which overlay was toggled
+            on first — see MapPanes. */}
         {mapLayers.weather && radarTemplate && (
           <TileLayer
             key={radarTemplate}
+            pane={RADAR_PANE}
             url={radarTemplate}
-            // Radar is a wash of colour over the whole frame; at full
-            // strength it buries both the terrain and the thumbnails.
-            opacity={0.5}
-            attribution="Radar &copy; RainViewer"
+            // RainViewer's radar composite only has data to z7 — measured,
+            // not assumed: every tile from z8 up is the same 1370-byte
+            // blank PNG. Without maxNativeZoom Leaflet dutifully requested
+            // those blanks and the radar simply disappeared the moment you
+            // zoomed in far enough to actually see any cameras. Capping the
+            // native level makes Leaflet upscale the z7 tile instead, so
+            // the weather stays put all the way in. It goes soft at high
+            // zoom, which is honest: that IS the resolution of the data.
+            maxNativeZoom={7}
             maxZoom={17}
+            // Lighter than the old flat 0.5. Radar is a full-frame wash,
+            // and once you're zoomed into a city the point is the city,
+            // not the rain over it.
+            opacity={0.38}
+            attribution="Radar &copy; RainViewer"
           />
         )}
+        {mapLayers.roads && <TileLayer pane={REFERENCE_PANE} url={OVERLAY_TILES.roads} maxZoom={17} />}
+        {mapLayers.places && <TileLayer pane={REFERENCE_PANE} url={OVERLAY_TILES.places} maxZoom={17} />}
 
         <ViewportWatcher onChange={setViewport} />
         <UrlSync />

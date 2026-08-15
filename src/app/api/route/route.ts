@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCatalog } from "@/lib/cams/registry";
-import { isKnownUnavailable } from "@/lib/cams/thumbCache";
+import { isKnownUnavailable, selectLiveCams } from "@/lib/cams/thumbCache";
 import { toPublicCam } from "@/lib/cams/types";
 import { camerasAlongRoute, summarise } from "@/lib/route/corridor";
 import { geocode, routeBetween } from "@/lib/route/services";
@@ -89,8 +89,32 @@ export async function POST(request: Request) {
   // One search, then thin — the untrimmed count is what lets the UI say
   // "12 of 214 along this route" and offer to show more.
   const inCorridor = camerasAlongRoute(live, route.path, { corridorMeters });
-  const matches = summarise(inCorridor, maxCameras);
   const totalInCorridor = inCorridor.length;
+
+  // Spread -> probe -> spread again.
+  //
+  // The order matters and is easy to get wrong: probing a spread-out
+  // shortlist and keeping the first N survivors quietly returns the first
+  // N by distance, so a 135km drive comes back as twelve cameras from the
+  // first 40km. Instead every shortlisted camera is probed, and the
+  // survivors are re-spread — so removing a dead camera near Lakeland
+  // pulls in another camera near Lakeland, not one more in Tampa.
+  // 2x rather than 3x: every shortlisted camera is a real fetch against
+  // somebody else's public server, and at this endpoint's rate limit a 3x
+  // spread works out to ~700 upstream requests a minute. Double leaves
+  // enough slack to replace a dead camera in the same stretch of road
+  // without making us the reason an agency's camera host falls over.
+  const shortlist = summarise(inCorridor, Math.min(inCorridor.length, maxCameras * 2));
+  const probeStarted = Date.now();
+  const alive = await selectLiveCams(shortlist, shortlist.length, (match) => match.cam);
+  const matches = summarise(
+    alive.sort((a, b) => a.alongMeters - b.alongMeters),
+    maxCameras
+  );
+  console.log(
+    `[route] ${shortlist.length} probed, ${shortlist.length - alive.length} dead, ` +
+      `${matches.length} sent in ${Date.now() - probeStarted}ms`
+  );
 
   return NextResponse.json(
     {

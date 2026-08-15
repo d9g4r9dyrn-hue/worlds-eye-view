@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Providers } from "@/components/Providers";
 import { authEnabled } from "@/auth";
@@ -21,6 +21,26 @@ export const metadata: Metadata = {
   },
   twitter: { card: "summary_large_image", title: "World's Eye View", description: DESCRIPTION },
   robots: { index: true, follow: true },
+};
+
+/**
+ * Next supplies a sensible default viewport; this states it explicitly to
+ * add two things it doesn't.
+ *
+ * `viewportFit: "cover"` lets the map run under a phone's rounded corners
+ * and notch instead of being letterboxed by them, which matters when the
+ * whole page is one edge-to-edge map.
+ *
+ * Deliberately NOT setting `maximumScale`/`userScalable: false`. Locking
+ * zoom would mask the iOS input-focus zoom (see globals.css) rather than
+ * fix it, and would take pinch-zoom away from anyone who needs it to read
+ * a camera label.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#06080b",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

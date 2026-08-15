@@ -25,6 +25,17 @@ import type { SavedDashboard } from "@/lib/useDashboards";
 /** Ideal width of a single tile before the viewport cap starts shrinking them. */
 const TILE_TARGET_PX = 340;
 
+/**
+ * Narrowest a tile may get before we drop a column instead.
+ *
+ * The auto layout aims for a near-square grid, which is right on a
+ * desktop and wrong on a phone: a 12-camera route wall becomes 4 columns
+ * of ~80px tiles, too small to recognise anything in. Below this width a
+ * column is removed and the wall simply gets taller — scrolling a column
+ * of legible cameras beats seeing all twelve as thumbnails of nothing.
+ */
+const TILE_MIN_PX = 148;
+
 const STORAGE_KEY = "wev.dashboard.v1";
 const COLUMNS_KEY = "wev.dashboard.columns.v1";
 
@@ -34,6 +45,17 @@ const DRAG_THRESHOLD_PX = 6;
 /** Columns for a near-square rectangle. 1->1, 2->2, 3->2, 4->2, 5->3, 9->3, 10->4. */
 export function gridColumns(count: number): number {
   return Math.max(1, Math.ceil(Math.sqrt(count)));
+}
+
+/**
+ * How many columns actually fit across `availableWidth` at a legible size.
+ *
+ * Always at least 1: on a very narrow screen one under-sized column is
+ * still better than a grid we refuse to draw.
+ */
+export function fittingColumns(availableWidth: number, gapPx: number): number {
+  if (!Number.isFinite(availableWidth) || availableWidth <= 0) return 12;
+  return Math.max(1, Math.floor((availableWidth + gapPx) / (TILE_MIN_PX + gapPx)));
 }
 
 export function loadStoredDashboard(): PublicCam[] {
@@ -238,9 +260,36 @@ export function MulticamDashboard({
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
+  /**
+   * The grid's own measured width, so the column cap reflects the box the
+   * tiles actually live in rather than an assumption about the viewport.
+   * A ResizeObserver catches phone rotation and desktop window drags
+   * alike, and re-measures when entering or leaving fullscreen.
+   */
+  const [gridWidth, setGridWidth] = useState(0);
+  useEffect(() => {
+    const node = gridRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setGridWidth(entry.contentRect.width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [cams.length, expanded]);
+
   const autoColumns = useMemo(() => gridColumns(cams.length), [cams.length]);
-  const columns = Math.min(columnOverride ?? autoColumns, Math.max(1, cams.length));
+  const columns = Math.min(
+    columnOverride ?? autoColumns,
+    Math.max(1, cams.length),
+    // Applies to the manual override too. Letting someone dial 6 columns
+    // on a 390px phone would recreate the exact unreadable wall this cap
+    // exists to prevent, and the -/+ readout below reports the capped
+    // number so the control never disagrees with what's on screen.
+    fittingColumns(gridWidth, 10)
+  );
   const rows = Math.max(1, Math.ceil(cams.length / columns));
+  /** Ceiling the -/+ control obeys, so it can't request a wall we won't draw. */
+  const maxColumns = Math.min(12, Math.max(1, cams.length), fittingColumns(gridWidth, 10));
 
   const setColumns = useCallback((value: number | null) => {
     setColumnOverride(value);
@@ -369,8 +418,8 @@ export function MulticamDashboard({
               </span>
               <button
                 type="button"
-                onClick={() => setColumns(Math.min(12, columns + 1))}
-                disabled={columns >= Math.min(12, cams.length)}
+                onClick={() => setColumns(Math.min(maxColumns, columns + 1))}
+                disabled={columns >= maxColumns}
                 aria-label="More columns"
                 className="px-1.5 py-0.5 text-sm text-wev-muted transition-colors hover:text-wev-text disabled:opacity-30"
               >
