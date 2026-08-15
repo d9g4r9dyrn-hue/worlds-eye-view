@@ -71,6 +71,43 @@ function pointToSegment(
   return { distance: Math.hypot(pt.x - projX, pt.y - projY), t };
 }
 
+export interface NearbyCam {
+  cam: Cam;
+  /** Straight-line metres from the point of interest. */
+  meters: number;
+}
+
+/**
+ * Cameras within `radiusMeters` of a single point, nearest first.
+ *
+ * The point-shaped sibling of the corridor search — same geodesy, no
+ * notion of travelling along anything, so the natural order is simply
+ * "how close is it". A cheap bounding-box test runs first because this
+ * scans the whole catalogue and most of the planet is nowhere near the
+ * point.
+ */
+export function camerasNearPoint(cams: Cam[], center: LatLon, radiusMeters: number): NearbyCam[] {
+  const cosLat = Math.cos((center.lat * Math.PI) / 180);
+  const latSpan = (radiusMeters / EARTH_RADIUS_M) * (180 / Math.PI);
+  // Guard the pole case, where a fixed metre radius spans every longitude
+  // and dividing by cos(lat) runs away to infinity.
+  const lonSpan = Math.abs(cosLat) < 1e-6 ? 180 : latSpan / Math.abs(cosLat);
+
+  const found: NearbyCam[] = [];
+  for (const cam of cams) {
+    if (Math.abs(cam.lat - center.lat) > latSpan) continue;
+    // No antimeridian wrap handling: a radius that crosses 180° would need
+    // it, but this is capped well below that in the API.
+    if (Math.abs(cam.lon - center.lon) > lonSpan) continue;
+
+    const meters = metersBetween(center, { lat: cam.lat, lon: cam.lon }, cosLat);
+    if (meters <= radiusMeters) found.push({ cam, meters });
+  }
+
+  found.sort((a, b) => a.meters - b.meters);
+  return found;
+}
+
 export interface CorridorOptions {
   /** How far from the road a camera may sit and still count. */
   corridorMeters: number;

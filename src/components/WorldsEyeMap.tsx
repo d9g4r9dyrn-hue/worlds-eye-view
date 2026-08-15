@@ -11,7 +11,7 @@ import { CamDetail } from "./CamDetail";
 import { LayersControl, type Facet, type LayersState } from "./LayersControl";
 import { MulticamDashboard, loadStoredDashboard, storeDashboard } from "./MulticamDashboard";
 import { useDashboards } from "@/lib/useDashboards";
-import { RoutePanel, type RouteResult } from "./RoutePanel";
+import { WallBuilder, type RouteResult } from "./WallBuilder";
 import {
   BASE_TILES,
   OVERLAY_TILES,
@@ -469,13 +469,13 @@ export function WorldsEyeMap() {
         />
       )}
 
-      <RoutePanel
-        result={routeResult}
-        onResult={setRouteResult}
-        onClear={() => setRouteResult(null)}
+      <WallBuilder
+        routeResult={routeResult}
+        onRouteResult={setRouteResult}
         onSendToWall={(cams) => {
-          // Replaces rather than appends: a route is a complete itinerary,
-          // and merging it into an unrelated wall gives neither.
+          // Replaces rather than appends: each of these searches produces a
+          // complete set — an itinerary, a neighbourhood, a line of
+          // sunsets — and merging one into an unrelated wall gives neither.
           updateWall(cams);
           setWallOpen(true);
         }}
