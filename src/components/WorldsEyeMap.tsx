@@ -11,6 +11,7 @@ import { CamDetail } from "./CamDetail";
 import { LayersControl, type Facet, type LayersState } from "./LayersControl";
 import { MulticamDashboard, loadStoredDashboard, storeDashboard } from "./MulticamDashboard";
 import { useDashboards } from "@/lib/useDashboards";
+import { PublicGallery, type PublicWall } from "./PublicGallery";
 import { WallBuilder, type RouteResult } from "./WallBuilder";
 import {
   BASE_TILES,
@@ -499,6 +500,17 @@ export function WorldsEyeMap() {
           </span>
         )}
       </button>
+
+      <PublicGallery
+        onOpen={(wall: PublicWall) => {
+          // Loads like any other wall, and deliberately does NOT mark it
+          // as the active saved dashboard: it belongs to someone else, so
+          // later edits must not try to write back to their row.
+          updateWall(wall.cams);
+          library.setActiveId(null);
+          setWallOpen(true);
+        }}
+      />
 
       {/* Keyed on the camera so switching selection remounts the panel —
           see CamDetail for why it resets that way rather than in an effect. */}
