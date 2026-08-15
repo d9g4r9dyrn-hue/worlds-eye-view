@@ -538,6 +538,8 @@ export function WorldsEyeMap() {
             onUpdate: library.update,
             onRename: (id, name) => library.update(id, { name }),
             onDelete: library.remove,
+            onSetPublic: (id, isPublic) => library.update(id, { isPublic }),
+            onMove: (id, folder) => library.update(id, { folder }),
           }}
         />
       )}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/lib/auth/session";
 import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
+import { cleanFolder } from "../route";
 import type { PublicCam } from "@/lib/cams/types";
 
 /**
@@ -65,6 +66,8 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/dashboards
     name?: string;
     cams?: unknown;
     columns?: number | null;
+    folder?: string;
+    isPublic?: boolean;
   };
 
   // Only the fields actually present are touched, so renaming a wall
@@ -84,6 +87,20 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/dashboards
     values.push(body.columns === null ? null : Math.min(12, Math.max(1, Number(body.columns))));
     sets.push(`columns = $${values.length}`);
   }
+  if (body.folder !== undefined) {
+    values.push(cleanFolder(body.folder));
+    sets.push(`folder = $${values.length}`);
+  }
+  if (body.isPublic !== undefined) {
+    const isPublic = body.isPublic === true;
+    values.push(isPublic);
+    sets.push(`is_public = $${values.length}`);
+    // published_at records when it first went public and is cleared on
+    // unpublish, so the public gallery can order by it without a second
+    // column tracking the same thing. Re-publishing sets a fresh time,
+    // which is the honest answer to "when did this appear".
+    sets.push(isPublic ? "published_at = now()" : "published_at = NULL");
+  }
 
   if (sets.length === 0) return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   sets.push("updated_at = now()");
@@ -92,7 +109,7 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/dashboards
   const { rows } = await getPool().query(
     `UPDATE dashboards SET ${sets.join(", ")}
       WHERE id = $${values.length - 1} AND user_id = $${values.length}
-      RETURNING id, name, cams, columns, updated_at`,
+      RETURNING id, name, cams, columns, updated_at, folder, is_public`,
     values
   );
 
@@ -100,7 +117,15 @@ export async function PATCH(request: Request, ctx: RouteContext<"/api/dashboards
 
   const row = rows[0];
   return NextResponse.json({
-    dashboard: { id: row.id, name: row.name, cams: row.cams, columns: row.columns, updatedAt: row.updated_at },
+    dashboard: {
+      id: row.id,
+      name: row.name,
+      cams: row.cams,
+      columns: row.columns,
+      updatedAt: row.updated_at,
+      folder: row.folder ?? "",
+      isPublic: Boolean(row.is_public),
+    },
   });
 }
 

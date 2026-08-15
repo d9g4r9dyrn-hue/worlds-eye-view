@@ -24,6 +24,9 @@ export interface SavedDashboard {
   cams: PublicCam[];
   columns: number | null;
   updatedAt: string;
+  /** Virtual folder path like "sunsets/italy"; "" is the root. */
+  folder: string;
+  isPublic: boolean;
 }
 
 export function useDashboards() {
@@ -57,21 +60,33 @@ export function useDashboards() {
     void refresh();
   }, [refresh]);
 
-  const create = useCallback(async (name: string, cams: PublicCam[], columns: number | null) => {
+  const create = useCallback(
+    async (name: string, cams: PublicCam[], columns: number | null, folder = "") => {
     const response = await fetch("/api/dashboards", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, cams, columns }),
+      body: JSON.stringify({ name, cams, columns, folder }),
     });
     if (!response.ok) return null;
     const { dashboard } = (await response.json()) as { dashboard: SavedDashboard };
     setFetched((current) => [dashboard, ...current]);
     setSelectedId(dashboard.id);
     return dashboard;
-  }, []);
+    },
+    []
+  );
 
   const update = useCallback(
-    async (id: number, patch: { name?: string; cams?: PublicCam[]; columns?: number | null }) => {
+    async (
+      id: number,
+      patch: {
+        name?: string;
+        cams?: PublicCam[];
+        columns?: number | null;
+        folder?: string;
+        isPublic?: boolean;
+      }
+    ) => {
       const response = await fetch(`/api/dashboards/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },

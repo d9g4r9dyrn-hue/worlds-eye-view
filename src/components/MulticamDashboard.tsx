@@ -179,10 +179,14 @@ export interface DashboardLibrary {
   dashboards: SavedDashboard[];
   activeId: number | null;
   onLoad: (dashboard: SavedDashboard) => void;
-  onCreate: (name: string, cams: PublicCam[], columns: number | null) => Promise<unknown>;
+  onCreate: (name: string, cams: PublicCam[], columns: number | null, folder?: string) => Promise<unknown>;
   onUpdate: (id: number, patch: { cams?: PublicCam[]; columns?: number | null }) => Promise<unknown>;
   onRename: (id: number, name: string) => Promise<unknown>;
   onDelete: (id: number) => Promise<unknown>;
+  /** Publish or unpublish a wall. Public walls are readable by guests. */
+  onSetPublic: (id: number, isPublic: boolean) => Promise<unknown>;
+  /** Move a wall to a virtual folder path; "" is the root. */
+  onMove: (id: number, folder: string) => Promise<unknown>;
 }
 
 export function MulticamDashboard({
@@ -398,6 +402,8 @@ export function MulticamDashboard({
                 onUpdate={library.onUpdate}
                 onRename={library.onRename}
                 onDelete={library.onDelete}
+                onSetPublic={library.onSetPublic}
+                onMove={library.onMove}
               />
             )}
           </div>

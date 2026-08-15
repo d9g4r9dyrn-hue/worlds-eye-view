@@ -22,6 +22,9 @@ export interface DashboardRow {
   cams: PublicCam[];
   columns: number | null;
   updatedAt: string;
+  /** Virtual folder path, "" for the root. See cleanFolder. */
+  folder: string;
+  isPublic: boolean;
 }
 
 /**
@@ -62,6 +65,33 @@ function cleanName(input: unknown, fallback: string): string {
   return (name || fallback).slice(0, MAX_NAME_LENGTH);
 }
 
+/** Depth cap. Deep enough for /sunsets/europe/italy, shallow enough that
+ *  the tree stays navigable in a dropdown. */
+const MAX_FOLDER_DEPTH = 4;
+const MAX_SEGMENT_LENGTH = 40;
+
+/**
+ * Normalises a folder path to a canonical form: no leading or trailing
+ * slash, no empty or duplicated segments, no "." or "..".
+ *
+ * The path is only ever a label - nothing resolves it against a
+ * filesystem - but it is also user input that gets displayed and grouped
+ * on, so it is normalised once here rather than defended against
+ * everywhere it is read. Rejecting ".." matters less for traversal than
+ * for the fact that two spellings of the same folder would otherwise
+ * appear as two folders.
+ */
+export function cleanFolder(input: unknown): string {
+  if (typeof input !== "string") return "";
+  const segments = input
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..")
+    .slice(0, MAX_FOLDER_DEPTH)
+    .map((segment) => segment.slice(0, MAX_SEGMENT_LENGTH));
+  return segments.join("/");
+}
+
 async function requireUser() {
   if (!isDatabaseConfigured()) return null;
   const user = await currentUser();
@@ -77,8 +107,8 @@ export async function GET() {
 
   await ensureSchema();
   const { rows } = await getPool().query(
-    `SELECT id, name, cams, columns, updated_at
-       FROM dashboards WHERE user_id = $1 ORDER BY updated_at DESC`,
+    `SELECT id, name, cams, columns, updated_at, folder, is_public
+       FROM dashboards WHERE user_id = $1 ORDER BY folder ASC, updated_at DESC`,
     [userId]
   );
 
@@ -88,6 +118,8 @@ export async function GET() {
     cams: row.cams ?? [],
     columns: row.columns,
     updatedAt: row.updated_at,
+    folder: row.folder ?? "",
+    isPublic: Boolean(row.is_public),
   }));
 
   return NextResponse.json({ dashboards }, { headers: { "Cache-Control": "no-store" } });
@@ -102,6 +134,7 @@ export async function POST(request: Request) {
     name?: string;
     cams?: unknown;
     columns?: number | null;
+    folder?: string;
   };
 
   const { rows: countRows } = await getPool().query(`SELECT COUNT(*)::int AS n FROM dashboards WHERE user_id = $1`, [
@@ -114,15 +147,31 @@ export async function POST(request: Request) {
   const columns = Number.isFinite(body.columns) ? Math.min(12, Math.max(1, Number(body.columns))) : null;
 
   const { rows } = await getPool().query(
-    `INSERT INTO dashboards (user_id, name, cams, columns)
-     VALUES ($1, $2, $3::jsonb, $4)
-     RETURNING id, name, cams, columns, updated_at`,
-    [userId, cleanName(body.name, "Untitled wall"), JSON.stringify(sanitiseCams(body.cams)), columns]
+    `INSERT INTO dashboards (user_id, name, cams, columns, folder)
+     VALUES ($1, $2, $3::jsonb, $4, $5)
+     RETURNING id, name, cams, columns, updated_at, folder, is_public`,
+    [
+      userId,
+      cleanName(body.name, "Untitled wall"),
+      JSON.stringify(sanitiseCams(body.cams)),
+      columns,
+      cleanFolder(body.folder),
+    ]
   );
 
   const row = rows[0];
   return NextResponse.json(
-    { dashboard: { id: row.id, name: row.name, cams: row.cams, columns: row.columns, updatedAt: row.updated_at } },
+    {
+      dashboard: {
+        id: row.id,
+        name: row.name,
+        cams: row.cams,
+        columns: row.columns,
+        updatedAt: row.updated_at,
+        folder: row.folder ?? "",
+        isPublic: Boolean(row.is_public),
+      },
+    },
     { status: 201 }
   );
 }
