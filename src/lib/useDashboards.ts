@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useAccount } from "./useAccount";
 import type { PublicCam } from "./cams/types";
 
 /**
@@ -27,8 +27,7 @@ export interface SavedDashboard {
 }
 
 export function useDashboards() {
-  const { status } = useSession();
-  const signedIn = status === "authenticated";
+  const { signedIn } = useAccount();
 
   const [fetched, setFetched] = useState<SavedDashboard[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);

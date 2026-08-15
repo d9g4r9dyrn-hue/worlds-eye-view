@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { currentUser } from "@/lib/auth/session";
 import { ensureSchema, getPool, isDatabaseConfigured } from "@/lib/db";
 import type { PublicCam } from "@/lib/cams/types";
 
@@ -64,9 +64,11 @@ function cleanName(input: unknown, fallback: string): string {
 
 async function requireUser() {
   if (!isDatabaseConfigured()) return null;
-  const session = await auth();
-  const id = session?.user?.id;
-  return id ? Number(id) : null;
+  const user = await currentUser();
+  // Verified accounts only. An unverified one has proved nothing about
+  // the address it claims, and letting it accumulate saved walls would
+  // make the confirmation step optional in practice.
+  return user && user.emailVerified ? user.id : null;
 }
 
 export async function GET() {

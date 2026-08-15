@@ -4,14 +4,17 @@ import { useState } from "react";
 import Link from "next/link";
 import { EyeGlobeMark, Wordmark } from "./Wordmark";
 import { AboutPanel } from "./AboutPanel";
-import { AuthMenu } from "./AuthMenu";
+import { AccountMenu } from "./AccountMenu";
 
 /**
  * Deliberately slim. The map is the product, so the chrome is one 48px
  * bar: the mark, the wordmark, and the two things anyone actually needs
  * (what this is, and where it came from).
  */
-export function SiteHeader({ authEnabled }: { authEnabled: boolean }) {
+// Accounts advertise themselves: AccountMenu asks the server whether
+// they're configured and renders nothing if not, so the header no
+// longer needs the flag threaded down from the layout.
+export function SiteHeader() {
   const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
@@ -38,7 +41,7 @@ export function SiteHeader({ authEnabled }: { authEnabled: boolean }) {
           >
             CortiCorp
           </a>
-          <AuthMenu enabled={authEnabled} />
+          <AccountMenu />
         </nav>
       </header>
 

@@ -1,7 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Providers } from "@/components/Providers";
-import { authEnabled } from "@/auth";
 import "./globals.css";
 
 const DESCRIPTION =
@@ -50,10 +48,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           is satellite imagery or a camera frame, and light chrome around
           that reads as a rendering bug rather than a preference. */}
       <body className="flex h-full flex-col overflow-hidden">
-        <Providers>
-          <SiteHeader authEnabled={authEnabled} />
-          <main className="min-h-0 flex-1">{children}</main>
-        </Providers>
+        <SiteHeader />
+        <main className="min-h-0 flex-1">{children}</main>
       </body>
     </html>
   );
