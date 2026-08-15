@@ -37,6 +37,18 @@ const TILE_TARGET_PX = 340;
  */
 const TILE_MIN_PX = 148;
 
+/**
+ * Shortest a row may get in fullscreen before the wall starts scrolling
+ * instead of squeezing.
+ *
+ * Fullscreen treats the wall as a video wall: every row shares the
+ * screen height equally. That is right for six cameras and wrong for
+ * sixty - a long route packed into one screen gives 8x8 slivers nothing
+ * is recognisable in. Past this height the grid keeps rows at a legible
+ * size and scrolls, which is the only way to actually read a big wall.
+ */
+const ROW_MIN_PX = 150;
+
 const STORAGE_KEY = "wev.dashboard.v1";
 const COLUMNS_KEY = "wev.dashboard.columns.v1";
 
@@ -279,11 +291,13 @@ export function MulticamDashboard({
    * alike, and re-measures when entering or leaving fullscreen.
    */
   const [gridWidth, setGridWidth] = useState(0);
+  const [gridHeight, setGridHeight] = useState(0);
   useEffect(() => {
     const node = gridRef.current;
     if (!node) return;
     const observer = new ResizeObserver(([entry]) => {
       setGridWidth(entry.contentRect.width);
+      setGridHeight(entry.contentRect.height);
     });
     observer.observe(node);
     return () => observer.disconnect();
@@ -300,6 +314,13 @@ export function MulticamDashboard({
     fittingColumns(gridWidth, 10)
   );
   const rows = Math.max(1, Math.ceil(cams.length / columns));
+  /**
+   * Fullscreen only: whether every row still fits at a legible height.
+   * While it does, rows share the screen (the video-wall look). Once it
+   * doesn't, rows take a fixed height and the wall scrolls.
+   */
+  const rowsFitOnScreen = gridHeight === 0 || rows * ROW_MIN_PX <= gridHeight;
+
   /** Ceiling the -/+ control obeys, so it can't request a wall we won't draw. */
   const maxColumns = Math.min(12, Math.max(1, cams.length), fittingColumns(gridWidth, 10));
 
@@ -493,7 +514,9 @@ export function MulticamDashboard({
         </div>
 
         <div
-          className={`min-h-0 flex-1 p-2.5 sm:p-3.5 ${expanded ? "flex flex-col overflow-hidden" : "overflow-auto"}`}
+          className={`min-h-0 flex-1 p-2.5 sm:p-3.5 ${
+            expanded ? `flex flex-col ${rowsFitOnScreen ? "overflow-hidden" : "overflow-y-auto"}` : "overflow-auto"
+          }`}
         >
           {cams.length === 0 ? (
             <p className="px-2 py-8 text-center text-sm text-wev-muted">
@@ -502,14 +525,25 @@ export function MulticamDashboard({
           ) : (
             <div
               ref={gridRef}
-              className={`grid gap-2 sm:gap-2.5 ${expanded ? "min-h-0 flex-1" : ""}`}
+              className={`grid gap-2 sm:gap-2.5 ${
+                expanded ? (rowsFitOnScreen ? "min-h-0 flex-1" : "shrink-0") : ""
+              }`}
               style={{
                 gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-                // Fullscreen is a video wall: the grid claims the whole
-                // height and every row shares it equally, so six cameras
-                // fill the screen instead of sitting in 4:3 boxes with
-                // half the display empty beneath them.
-                ...(expanded ? { gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))` } : {}),
+                // Fullscreen is a video wall while the wall is small
+                // enough to be one: the grid claims the whole height and
+                // every row shares it, so six cameras fill the screen
+                // instead of sitting in 4:3 boxes with half the display
+                // empty beneath them. Past that, rows hold a legible
+                // height and the container scrolls - squeezing sixty
+                // cameras onto one screen shows sixty of nothing.
+                ...(expanded
+                  ? {
+                      gridTemplateRows: rowsFitOnScreen
+                        ? `repeat(${rows}, minmax(0, 1fr))`
+                        : `repeat(${rows}, ${ROW_MIN_PX}px)`,
+                    }
+                  : {}),
               }}
             >
               {cams.map((cam, index) => (
