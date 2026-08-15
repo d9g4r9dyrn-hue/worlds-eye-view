@@ -51,9 +51,10 @@ export async function POST(request: Request) {
   await ensureSchema();
   const pool = getPool();
 
-  const existing = await pool.query(`SELECT id, password_hash FROM users WHERE LOWER(email) = $1`, [
-    email,
-  ]);
+  const existing = await pool.query(
+    `SELECT id, password_hash, "emailVerified" FROM users WHERE LOWER(email) = $1`,
+    [email]
+  );
 
   /**
    * Always the same answer, whether or not the address is already
@@ -72,20 +73,37 @@ export async function POST(request: Request) {
 
   if (existing.rows[0]) {
     const userId = Number(existing.rows[0].id);
-    // An account that exists but has no password is one created by an
-    // earlier Google sign-in; setting a password on it is a legitimate
-    // thing to want, and the emailed link is what authorises it.
-    if (!existing.rows[0].password_hash) {
+    const verified = Boolean(existing.rows[0].emailVerified);
+
+    /*
+     * An *unverified* account has no proven owner.
+     *
+     * Nobody has yet demonstrated control of this address, so the row
+     * is not yet anybody's property and re-registering simply takes it
+     * over: the new password replaces the old and a fresh link goes
+     * out. That cannot harm a real owner, because a real owner would
+     * have verified — and without it, an account whose first email was
+     * lost, mistyped or filtered is stuck forever with no way back,
+     * which is the far more likely and far worse outcome.
+     *
+     * It also covers the case of an account created by an earlier
+     * Google sign-in, which has no password at all.
+     */
+    if (!verified) {
       const hash = await hashPassword(password);
       await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, userId]);
       const token = await createEmailToken(userId, "verify_email");
       await sendVerificationEmail(email, token).catch((error) =>
         console.warn("[auth] verification email failed:", error)
       );
+      return sameAnswer;
     }
-    // Otherwise: send nothing, say the same thing. A silent no-op is the
-    // right behaviour for what is most likely someone who forgot they
-    // already registered — they can use "forgot password".
+
+    // Verified, and therefore genuinely someone's. Send nothing and say
+    // the same thing: this is most likely a person who forgot they had
+    // an account, and the answer must not differ from the new-account
+    // case or it becomes an oracle. Resetting their password from an
+    // unauthenticated form is exactly what must not happen here.
     return sameAnswer;
   }
 
