@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { PublicCam } from "@/lib/cams/types";
+import { getMyLocation, locationSupported, type Coords } from "@/lib/geolocate";
 
 /**
  * One panel, three ways to find a set of cameras.
@@ -66,6 +67,44 @@ function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.round((seconds % 3600) / 60);
   return hours ? `${hours}h ${minutes}m` : `${minutes} min`;
+}
+
+/** "Use where I am" — same control on both tabs that can take a point. */
+function HereButton({
+  active,
+  busy,
+  label,
+  onClick,
+  onClear,
+}: {
+  active: boolean;
+  busy: boolean;
+  label: string;
+  onClick: () => void;
+  onClear: () => void;
+}) {
+  // Hidden entirely where the browser can't do it, rather than shown and
+  // failing on click.
+  if (!locationSupported()) return null;
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      onClick={active ? onClear : onClick}
+      className={`flex w-full items-center justify-center gap-1.5 rounded border px-2 py-1 text-[11px] transition-colors disabled:opacity-40 ${
+        active
+          ? "border-sky-700 bg-sky-400/10 text-wev-accent"
+          : "border-wev-border bg-wev-panel-2 text-wev-muted hover:text-wev-text"
+      }`}
+    >
+      <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+      </svg>
+      {busy ? "Locating…" : active ? `${label} — tap to clear` : label}
+    </button>
+  );
 }
 
 const TAB_BASE =
@@ -157,6 +196,33 @@ export function WallBuilder({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The browser's fix, held once and shared by both tabs.
+   *
+   * Which end of a route it stands for is tracked separately, because
+   * "from here to Orlando" and "from Tampa to here" are both reasonable
+   * and the fix itself is the same either way.
+   */
+  const [here, setHere] = useState<Coords | null>(null);
+  const [routeEnd, setRouteEnd] = useState<"from" | "to" | null>(null);
+  const [locating, setLocating] = useState(false);
+
+  const locate = async (): Promise<Coords | null> => {
+    if (here) return here;
+    setLocating(true);
+    setError(null);
+    try {
+      const coords = await getMyLocation();
+      setHere(coords);
+      return coords;
+    } catch (locationError) {
+      setError(locationError instanceof Error ? locationError.message : "Couldn't get your location.");
+      return null;
+    } finally {
+      setLocating(false);
+    }
+  };
+
   // Route mode
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -168,6 +234,7 @@ export function WallBuilder({
   const [radiusMeters, setRadiusMeters] = useState(25_000);
   const [placeMax, setPlaceMax] = useState(12);
   const [nearbyResult, setNearbyResult] = useState<NearbyResult | null>(null);
+  const [usingHere, setUsingHere] = useState(false);
 
   // Sun mode
   const [phase, setPhase] = useState<"sunrise" | "sunset">("sunset");
@@ -260,10 +327,18 @@ export function WallBuilder({
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (!from.trim() || !to.trim()) return;
+                  // Either end may be the current location instead of text.
+                  if ((!from.trim() && routeEnd !== "from") || (!to.trim() && routeEnd !== "to")) return;
                   void post<RouteResult>(
                     "/api/route",
-                    { from, to, corridorMeters, maxCameras: routeMax },
+                    {
+                      from,
+                      to,
+                      corridorMeters,
+                      maxCameras: routeMax,
+                      ...(routeEnd === "from" && here ? { fromLat: here.lat, fromLon: here.lon } : {}),
+                      ...(routeEnd === "to" && here ? { toLat: here.lat, toLon: here.lon } : {}),
+                    },
                     onRouteResult
                   );
                 }}
@@ -272,15 +347,44 @@ export function WallBuilder({
                 <input
                   value={from}
                   onChange={(event) => setFrom(event.target.value)}
-                  placeholder="From — e.g. Tampa, FL"
+                  disabled={routeEnd === "from"}
+                  placeholder={routeEnd === "from" ? "My location" : "From — e.g. Tampa, FL"}
                   className="w-full rounded border border-wev-border bg-wev-panel-2 px-2 py-1.5 text-xs text-wev-text outline-none placeholder:text-wev-muted focus:border-sky-700"
                 />
                 <input
                   value={to}
                   onChange={(event) => setTo(event.target.value)}
-                  placeholder="To — e.g. Orlando, FL"
+                  disabled={routeEnd === "to"}
+                  placeholder={routeEnd === "to" ? "My location" : "To — e.g. Orlando, FL"}
                   className="w-full rounded border border-wev-border bg-wev-panel-2 px-2 py-1.5 text-xs text-wev-text outline-none placeholder:text-wev-muted focus:border-sky-700"
                 />
+
+                <div className="flex gap-1">
+                  <HereButton
+                    active={routeEnd === "from"}
+                    busy={locating}
+                    label="Start here"
+                    onClick={async () => {
+                      if (await locate()) {
+                        setRouteEnd("from");
+                        setFrom("");
+                      }
+                    }}
+                    onClear={() => setRouteEnd(null)}
+                  />
+                  <HereButton
+                    active={routeEnd === "to"}
+                    busy={locating}
+                    label="End here"
+                    onClick={async () => {
+                      if (await locate()) {
+                        setRouteEnd("to");
+                        setTo("");
+                      }
+                    }}
+                    onClear={() => setRouteEnd(null)}
+                  />
+                </div>
 
                 <div>
                   <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-wev-muted">How close to the road</p>
@@ -307,7 +411,11 @@ export function WallBuilder({
                   onChange={setRouteMax}
                   hint="Spread evenly along the drive, not just the first few — so you get the whole journey rather than the first city."
                 />
-                <SubmitButton busy={busy} disabled={busy || !from.trim() || !to.trim()} label="Search this route" />
+                <SubmitButton busy={busy} disabled={
+                    busy ||
+                    (!from.trim() && routeEnd !== "from") ||
+                    (!to.trim() && routeEnd !== "to")
+                  } label="Search this route" />
               </form>
 
               {routeResult && (
@@ -353,10 +461,12 @@ export function WallBuilder({
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  if (!place.trim()) return;
+                  if (!place.trim() && !usingHere) return;
                   void post<NearbyResult>(
                     "/api/nearby",
-                    { place, radiusMeters, maxCameras: placeMax },
+                    usingHere && here
+                      ? { lat: here.lat, lon: here.lon, radiusMeters, maxCameras: placeMax }
+                      : { place, radiusMeters, maxCameras: placeMax },
                     setNearbyResult
                   );
                 }}
@@ -365,8 +475,22 @@ export function WallBuilder({
                 <input
                   value={place}
                   onChange={(event) => setPlace(event.target.value)}
-                  placeholder="Where — e.g. Reykjavík"
+                  disabled={usingHere}
+                  placeholder={usingHere ? "My location" : "Where — e.g. Reykjavík"}
                   className="w-full rounded border border-wev-border bg-wev-panel-2 px-2 py-1.5 text-xs text-wev-text outline-none placeholder:text-wev-muted focus:border-sky-700"
+                />
+
+                <HereButton
+                  active={usingHere}
+                  busy={locating}
+                  label="Cameras near me"
+                  onClick={async () => {
+                    if (await locate()) {
+                      setUsingHere(true);
+                      setPlace("");
+                    }
+                  }}
+                  onClear={() => setUsingHere(false)}
                 />
 
                 <div>
@@ -390,7 +514,7 @@ export function WallBuilder({
                 </div>
 
                 <CountSlider value={placeMax} onChange={setPlaceMax} hint="Closest first." />
-                <SubmitButton busy={busy} disabled={busy || !place.trim()} label="Search near here" />
+                <SubmitButton busy={busy} disabled={busy || (!place.trim() && !usingHere)} label="Search near here" />
               </form>
 
               {nearbyResult && (

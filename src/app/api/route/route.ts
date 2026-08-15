@@ -36,13 +36,34 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     from?: string;
     to?: string;
+    fromLat?: number;
+    fromLon?: number;
+    toLat?: number;
+    toLon?: number;
     corridorMeters?: number;
     maxCameras?: number;
   };
 
+  /**
+   * Either end may arrive as coordinates instead of a name — that is how
+   * "my location" is sent. Coordinates win when both are present: they
+   * are unambiguous, and skipping the geocode keeps a button the user
+   * might press repeatedly off Nominatim entirely.
+   */
+  function fixedPoint(lat: unknown, lon: unknown, label: string) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    const latitude = Number(lat);
+    const longitude = Number(lon);
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+    return { lat: latitude, lon: longitude, label };
+  }
+
+  const fromFixed = fixedPoint(body.fromLat, body.fromLon, "My location");
+  const toFixed = fixedPoint(body.toLat, body.toLon, "My location");
+
   const from = String(body.from ?? "").trim();
   const to = String(body.to ?? "").trim();
-  if (!from || !to) {
+  if ((!from && !fromFixed) || (!to && !toFixed)) {
     return NextResponse.json({ error: "Both a start and a destination are required." }, { status: 400 });
   }
 
@@ -56,8 +77,8 @@ export async function POST(request: Request) {
   // run in sequence rather than in parallel by design.
   let start, end;
   try {
-    start = await geocode(from);
-    end = start ? await geocode(to) : null;
+    start = fromFixed ?? (await geocode(from));
+    end = toFixed ?? (start ? await geocode(to) : null);
   } catch (error) {
     console.warn("[route] geocoding failed:", error instanceof Error ? error.message : error);
     return NextResponse.json({ error: "Couldn't look up those places right now." }, { status: 502 });
