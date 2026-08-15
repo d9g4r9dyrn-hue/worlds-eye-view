@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PublicCam } from "@/lib/cams/types";
 import { thumbUrl, versionFor } from "@/lib/cams/display";
+import { CamDetail } from "./CamDetail";
 import { DashboardPicker } from "./DashboardPicker";
 import type { SavedDashboard } from "@/lib/useDashboards";
 
@@ -208,6 +209,9 @@ export function MulticamDashboard({
   const [columnOverride, setColumnOverride] = useState<number | null>(loadStoredColumns);
   const [expanded, setExpanded] = useState(false);
 
+  /** The tile being examined full-size, if any. */
+  const [inspecting, setInspecting] = useState<PublicCam | null>(null);
+
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const dragOrigin = useRef<{ x: number; y: number; index: number } | null>(null);
@@ -223,13 +227,17 @@ export function MulticamDashboard({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       // Escape backs out one level: leave fullscreen first, then close.
+      if (inspecting) {
+        setInspecting(null);
+        return;
+      }
       if (document.fullscreenElement) return;
       if (expanded) setExpanded(false);
       else onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, expanded]);
+  }, [onClose, expanded, inspecting]);
 
   /**
    * Real fullscreen where it exists, CSS fullscreen everywhere else.
@@ -345,6 +353,10 @@ export function MulticamDashboard({
       if (dragIndex !== null && overIndex !== null && origin) {
         const next = reorder(cams, dragIndex, overIndex);
         if (next !== cams) onReorder(next);
+      } else if (dragIndex === null && origin) {
+        // Never crossed the drag threshold, so it was a tap rather than a
+        // rearrange — the same gesture that opens a camera on the map.
+        setInspecting(cams[origin.index] ?? null);
       }
       setDragIndex(null);
       setOverIndex(null);
@@ -522,6 +534,26 @@ export function MulticamDashboard({
           )}
         </div>
       </div>
+
+      {/* Inside the shell on purpose: the shell establishes a stacking
+          context, so CamDetail's z-index resolves against its siblings
+          here and lands above the wall rather than behind it. */}
+      {inspecting && (
+        <CamDetail
+          key={inspecting.id}
+          cam={inspecting}
+          inWall
+          // Removing from here also closes the panel: leaving it open on
+          // a camera that is no longer on the wall would offer actions
+          // that no longer mean anything.
+          onToggleWall={() => {
+            onRemove(inspecting.id);
+            setInspecting(null);
+          }}
+          onOpenWall={() => setInspecting(null)}
+          onClose={() => setInspecting(null)}
+        />
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { PublicCam } from "@/lib/cams/types";
 
 /**
- * One panel, three ways to fill a camera wall.
+ * One panel, three ways to find a set of cameras.
  *
  * These began as one feature (cameras along a route) and grew into three
  * that differ only in how they choose a set of cameras. They live in a
@@ -219,7 +219,7 @@ export function WallBuilder({
             <circle cx="18" cy="5" r="2.2" />
             <path d="M8 18.5c6.5-1 3.5-12 8-13" />
           </svg>
-          Build a wall
+          Find cameras
           {resultCount ? (
             <span className="rounded-full bg-sky-400/15 px-1.5 py-0.5 text-[10px] text-wev-accent">{resultCount}</span>
           ) : null}
@@ -307,7 +307,7 @@ export function WallBuilder({
                   onChange={setRouteMax}
                   hint="Spread evenly along the drive, not just the first few — so you get the whole journey rather than the first city."
                 />
-                <SubmitButton busy={busy} disabled={busy || !from.trim() || !to.trim()} label="Find cameras" />
+                <SubmitButton busy={busy} disabled={busy || !from.trim() || !to.trim()} label="Search this route" />
               </form>
 
               {routeResult && (
@@ -390,7 +390,7 @@ export function WallBuilder({
                 </div>
 
                 <CountSlider value={placeMax} onChange={setPlaceMax} hint="Closest first." />
-                <SubmitButton busy={busy} disabled={busy || !place.trim()} label="Find cameras" />
+                <SubmitButton busy={busy} disabled={busy || !place.trim()} label="Search near here" />
               </form>
 
               {nearbyResult && (

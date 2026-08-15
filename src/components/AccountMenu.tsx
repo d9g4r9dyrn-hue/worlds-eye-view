@@ -188,6 +188,38 @@ export function AccountMenu() {
                 </button>
               </form>
 
+              {mode === "signin" && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={async () => {
+                    if (!email) {
+                      setError("Enter your email address first.");
+                      return;
+                    }
+                    setBusy(true);
+                    setError(null);
+                    setNotice(null);
+                    try {
+                      const response = await fetch("/api/auth/forgot", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email }),
+                      });
+                      const data = await response.json().catch(() => ({}));
+                      setNotice(data?.message ?? "If that address has an account, a reset link is on its way.");
+                    } catch {
+                      setError("Network error — try again.");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                  className="mt-2 w-full text-center text-[10px] text-wev-muted underline transition-colors hover:text-wev-text disabled:opacity-40"
+                >
+                  Forgot your password?
+                </button>
+              )}
+
               {mode === "register" && (
                 <p className="mt-2 text-[10px] leading-tight text-wev-muted">
                   Your email is used to confirm the account and nothing else. See the{" "}
