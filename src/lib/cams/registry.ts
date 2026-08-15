@@ -52,10 +52,18 @@ const SOURCES: RegisteredSource[] = [
   // roster points at frames that no longer exist — same failure mode as
   // AVO, and the same short TTL.
   { source: singaporeSource, ttlMs: 10 * MINUTE },
-  // Six hours is safe despite Windy's 10-minute image-URL expiry: the
-  // roster stores only durable metadata and mints a fresh URL per camera
-  // at view time. See sources/windy.ts.
-  { source: windySource, ttlMs: 6 * HOUR },
+  // A full day, despite Windy's 10-minute image-URL expiry: the roster
+  // stores only durable metadata and mints a fresh URL per camera at view
+  // time, so re-paging exists purely to notice cameras that have appeared
+  // or gone — which is a daily-scale question, not an hourly one.
+  //
+  // The long TTL is what pays for the breadth. Windy's roster fan-out
+  // costs ~200 requests against a key whose free-tier quota is not
+  // published and exposes no headers, and those same requests compete
+  // with the per-view URL minting. Refreshing once a day instead of four
+  // times keeps the roster's share of that unknown budget small enough to
+  // leave real headroom for people actually looking at cameras.
+  { source: windySource, ttlMs: 24 * HOUR },
 ];
 
 interface SourceState {
