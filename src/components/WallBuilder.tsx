@@ -274,11 +274,11 @@ export function WallBuilder({
         : sunResult?.cameras.length;
 
   return (
-    <div className="absolute left-3 top-14 z-[1100] w-[17rem] max-w-[calc(100%-1.5rem)]">
+    <div className="relative">
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-wev-border bg-wev-panel/95 px-3 py-2 text-xs font-medium text-wev-text shadow-lg backdrop-blur-sm transition-colors hover:bg-wev-panel-2"
+        className="flex items-center gap-2 rounded-lg border border-wev-border bg-wev-panel/95 px-2.5 py-2 text-xs font-medium text-wev-text shadow-lg backdrop-blur-sm transition-colors hover:bg-wev-panel-2"
       >
         <span className="flex items-center gap-2">
           <svg viewBox="0 0 24 24" className="h-4 w-4 text-wev-accent" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -297,7 +297,7 @@ export function WallBuilder({
       </button>
 
       {open && (
-        <div className="mt-1.5 max-h-[min(34rem,calc(100dvh-10rem))] overflow-y-auto rounded-lg border border-wev-border bg-wev-panel/97 p-2.5 shadow-2xl backdrop-blur-sm">
+        <div className="absolute right-0 top-full z-[1100] mt-1.5 max-h-[min(34rem,calc(100dvh-10rem))] w-[17rem] max-w-[calc(100vw-1.5rem)] overflow-y-auto rounded-lg border border-wev-border bg-wev-panel/97 p-2.5 shadow-2xl backdrop-blur-sm">
           <div className="mb-2 flex gap-1 rounded border border-wev-border bg-wev-panel-2 p-0.5">
             {(
               [

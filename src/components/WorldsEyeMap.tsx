@@ -459,28 +459,35 @@ export function WorldsEyeMap() {
         total={data?.total ?? 0}
       />
 
-      {data && (
-        <LayersControl
-          categoryFacets={data.facets.categories}
-          providerFacets={data.facets.providers}
-          state={layers}
-          onChange={setLayers}
-          mapLayers={mapLayers}
-          onMapLayersChange={setMapLayers}
-        />
-      )}
-
-      <WallBuilder
-        routeResult={routeResult}
-        onRouteResult={setRouteResult}
-        onSendToWall={(cams) => {
+      {/* One row, right-aligned, sharing the top edge with the status
+          readout on the left. Both controls size to their own labels and
+          hang their panels off this row, so a phone shows all three at
+          once instead of a 264px "Layers" button lying across the
+          camera count. */}
+      <div className="absolute right-3 top-3 z-[1100] flex items-start gap-1.5">
+        <WallBuilder
+          routeResult={routeResult}
+          onRouteResult={setRouteResult}
+          onSendToWall={(cams) => {
           // Replaces rather than appends: each of these searches produces a
           // complete set — an itinerary, a neighbourhood, a line of
           // sunsets — and merging one into an unrelated wall gives neither.
-          updateWall(cams);
-          setWallOpen(true);
-        }}
-      />
+            updateWall(cams);
+            setWallOpen(true);
+          }}
+        />
+
+        {data && (
+          <LayersControl
+            categoryFacets={data.facets.categories}
+            providerFacets={data.facets.providers}
+            state={layers}
+            onChange={setLayers}
+            mapLayers={mapLayers}
+            onMapLayersChange={setMapLayers}
+          />
+        )}
+      </div>
 
       <button
         type="button"
@@ -573,7 +580,10 @@ function StatusBar({
   total: number;
 }) {
   return (
-    <div className="pointer-events-none absolute left-3 top-3 z-[1000] rounded-lg bg-black/70 px-3 py-2 text-[11px] leading-tight text-wev-text backdrop-blur-sm sm:text-xs">
+    // Bounded so it can never grow under the controls sharing this row.
+    // The right edge stops short of them rather than relying on the text
+    // happening to be short — the count grows with the catalogue.
+    <div className="pointer-events-none absolute left-3 top-3 z-[1000] max-w-[calc(100%-14rem)] truncate rounded-lg bg-black/70 px-2.5 py-2 text-[11px] leading-tight text-wev-text backdrop-blur-sm sm:max-w-none sm:px-3 sm:text-xs">
       {failed ? (
         <span className="text-red-300">Couldn&apos;t reach the camera index — pan or zoom to retry.</span>
       ) : loading && total === 0 ? (
@@ -583,7 +593,7 @@ function StatusBar({
           <span className="font-semibold text-white">{showing.toLocaleString()}</span>
           <span> shown</span>
           {matching > showing && <span className="text-wev-muted"> of {matching.toLocaleString()} here</span>}
-          <span className="text-wev-muted/70"> · {total.toLocaleString()} worldwide</span>
+          <span className="hidden text-wev-muted/70 sm:inline"> · {total.toLocaleString()} worldwide</span>
           {loading && <span className="text-wev-muted/70"> · updating…</span>}
         </>
       )}
