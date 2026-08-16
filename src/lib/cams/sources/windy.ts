@@ -288,6 +288,100 @@ async function fetchPage(
   return payload.webcams ?? [];
 }
 
+/**
+ * Coarse envelopes for sanity-checking a camera against its own country.
+ *
+ * Windy publishes the country alongside the coordinates, and occasionally
+ * the two disagree: "Fairlee: I66 @ VA-243 S" - a Virginia camera on
+ * Interstate 66 - arrives at longitude +77.267 instead of -77.267 and
+ * lands in western China. A sign flip is the classic form; the same
+ * check catches transposed lat/lon and stray zeroes.
+ *
+ * Boxes are deliberately generous, padded well past each country's real
+ * extent, because the job is to catch a camera on the wrong side of the
+ * planet rather than to police borders. Overseas territories are folded
+ * in where they matter (France, the US) so a legitimate camera in Hawaii
+ * or Reunion is never discarded.
+ *
+ * Unlisted countries are not checked at all. Guessing an envelope for a
+ * country nobody verified would eventually throw away real cameras,
+ * which is a worse failure than letting a rare bad one through - so this
+ * fails open by design.
+ *
+ * [lonMin, latMin, lonMax, latMax]
+ */
+const COUNTRY_BOUNDS: Record<string, [number, number, number, number]> = {
+  // The Americas — all firmly west of Greenwich. The US box stretches to
+  // +180 on purpose: the Aleutians cross the antimeridian, and clipping
+  // them at -180 would delete real Alaskan cameras.
+  "United States": [-180, 15, 180, 72],
+  Canada: [-142, 40, -50, 84],
+  Mexico: [-120, 13, -85, 34],
+  Brazil: [-76, -35, -33, 6],
+  Argentina: [-74, -56, -52, -20],
+  Chile: [-111, -57, -65, -16],
+  Peru: [-82, -19, -67, 1],
+  Colombia: [-82, -5, -66, 14],
+  "Costa Rica": [-87, 7, -81, 12],
+  // Europe
+  "United Kingdom": [-14, 48, 4, 62],
+  Ireland: [-11, 50, -5, 56],
+  Iceland: [-25, 62, -12, 68],
+  Norway: [-2, 56, 34, 82],
+  Sweden: [10, 54, 25, 70],
+  Finland: [19, 58, 32, 71],
+  Denmark: [7, 53, 16, 58],
+  Germany: [5, 46, 16, 56],
+  France: [-62, -22, 56, 52],
+  Italy: [6, 35, 19, 48],
+  Spain: [-19, 26, 5, 45],
+  Portugal: [-32, 29, -5, 43],
+  Switzerland: [5, 45, 11, 48],
+  Austria: [9, 46, 18, 50],
+  Netherlands: [2, 50, 8, 54],
+  Belgium: [2, 49, 7, 52],
+  Poland: [13, 48, 25, 55],
+  Czechia: [11, 48, 19, 52],
+  Croatia: [13, 42, 20, 47],
+  Greece: [19, 34, 30, 42],
+  Turkey: [25, 35, 45, 43],
+  Romania: [20, 43, 30, 49],
+  // Africa & Middle East
+  "South Africa": [15, -36, 34, -21],
+  Kenya: [33, -5, 43, 6],
+  Tanzania: [29, -12, 41, 0],
+  Namibia: [11, -30, 26, -16],
+  Morocco: [-18, 20, 0, 37],
+  Egypt: [24, 21, 37, 32],
+  "United Arab Emirates": [51, 22, 57, 27],
+  Israel: [34, 29, 36, 34],
+  // Asia
+  Japan: [122, 24, 154, 46],
+  "South Korea": [125, 33, 132, 39],
+  Taiwan: [119, 21, 123, 26],
+  China: [73, 17, 135, 54],
+  Thailand: [97, 5, 106, 21],
+  Vietnam: [102, 8, 110, 24],
+  Malaysia: [99, 0, 120, 8],
+  Indonesia: [94, -12, 142, 7],
+  Philippines: [116, 4, 127, 21],
+  India: [68, 6, 98, 36],
+  Nepal: [80, 26, 89, 31],
+  "Sri Lanka": [79, 5, 82, 10],
+  // Oceania
+  Australia: [112, -45, 154, -9],
+  "New Zealand": [166, -48, 179, -33],
+  Fiji: [176, -21, 182, -15],
+};
+
+/** True when the camera's coordinates contradict its own stated country. */
+function misplaced(cam: Cam): boolean {
+  const box = cam.country ? COUNTRY_BOUNDS[cam.country] : undefined;
+  if (!box) return false;
+  const [lonMin, latMin, lonMax, latMax] = box;
+  return cam.lon < lonMin || cam.lon > lonMax || cam.lat < latMin || cam.lat > latMax;
+}
+
 function toCam(webcam: WindyWebcam): Cam | null {
   const location = webcam.location;
   if (!webcam.webcamId || !location) return null;
@@ -332,6 +426,7 @@ export const windySource: CamSource = {
     // Colorado anchor — and whichever pass sees it first wins.
     const cams = new Map<string, Cam>();
     let requests = 0;
+    let dropped = 0;
 
     /**
      * Pages one filtered query until it has `target` cameras, the query
@@ -356,7 +451,12 @@ export const windySource: CamSource = {
 
         for (const webcam of batch) {
           const cam = toCam(webcam);
-          if (cam && !cams.has(cam.id)) cams.set(cam.id, cam);
+          if (!cam || cams.has(cam.id)) continue;
+          if (misplaced(cam)) {
+            dropped++;
+            continue;
+          }
+          cams.set(cam.id, cam);
         }
 
         if (batch.length < PAGE_SIZE) break;
@@ -392,6 +492,7 @@ export const windySource: CamSource = {
 
     console.log(
       `[cams] Windy: ${cams.size} cameras from ${requests} requests` +
+        (dropped ? `, ${dropped} dropped for contradicting their own country` : "") +
         (requests >= MAX_REQUESTS ? " (request budget exhausted — raise WINDY_MAX_REQUESTS for more)" : "")
     );
 
