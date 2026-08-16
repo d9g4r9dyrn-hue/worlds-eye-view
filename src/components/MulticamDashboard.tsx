@@ -38,6 +38,28 @@ const TILE_TARGET_PX = 340;
 const TILE_MIN_PX = 148;
 
 /**
+ * Floor for a column count the user asked for explicitly.
+ *
+ * TILE_MIN_PX governs the *automatic* layout, where the right instinct
+ * is caution. An explicit -/+ press is a different thing: someone who
+ * wants four columns on a phone to see more of a route at once has said
+ * so, and refusing is worse than a small tile. This is only low enough
+ * to keep a tile recognisable as a picture.
+ */
+const TILE_MIN_MANUAL_PX = 76;
+
+/**
+ * How long a finger must rest before a tile can be dragged.
+ *
+ * Tiles used to carry touch-action:none, which switched off native
+ * scrolling entirely - so on a phone every swipe rearranged the wall and
+ * the wall could not be scrolled at all. Now the browser scrolls
+ * normally and a drag has to be asked for by holding still. A move
+ * before the timer fires is a scroll and cancels it.
+ */
+const LONG_PRESS_MS = 350;
+
+/**
  * Shortest a row may get in fullscreen before the wall starts scrolling
  * instead of squeezing.
  *
@@ -66,9 +88,9 @@ export function gridColumns(count: number): number {
  * Always at least 1: on a very narrow screen one under-sized column is
  * still better than a grid we refuse to draw.
  */
-export function fittingColumns(availableWidth: number, gapPx: number): number {
+export function fittingColumns(availableWidth: number, gapPx: number, minTilePx = TILE_MIN_PX): number {
   if (!Number.isFinite(availableWidth) || availableWidth <= 0) return 12;
-  return Math.max(1, Math.floor((availableWidth + gapPx) / (TILE_MIN_PX + gapPx)));
+  return Math.max(1, Math.floor((availableWidth + gapPx) / (minTilePx + gapPx)));
 }
 
 export function loadStoredDashboard(): PublicCam[] {
@@ -106,6 +128,52 @@ function storeColumns(columns: number | null) {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Ways to order a wall.
+ *
+ * "Arranged" is first and is the default because it is the only one that
+ * is not a sort: it means whatever order the wall is already in, which
+ * for a route is the order you drive past the cameras and for a
+ * hand-built wall is where you dragged each tile. Every other option
+ * discards that, so choosing one is a deliberate act rather than
+ * something that happens on load.
+ */
+export type WallSort = "manual" | "title" | "place" | "category" | "provider";
+
+const SORTS: { value: WallSort; label: string }[] = [
+  { value: "manual", label: "Arranged" },
+  { value: "title", label: "Name" },
+  { value: "place", label: "Place" },
+  { value: "category", label: "Kind" },
+  { value: "provider", label: "Source" },
+];
+
+export function sortCams(cams: PublicCam[], sort: WallSort): PublicCam[] {
+  if (sort === "manual") return cams;
+
+  const keyOf = (cam: PublicCam): string => {
+    switch (sort) {
+      case "title":
+        return cam.title;
+      case "place":
+        // Country first so a wall groups by country and then by town,
+        // which is how someone scanning a long route actually reads it.
+        return `${cam.country ?? "￿"} ${cam.place ?? ""}`;
+      case "category":
+        return cam.category;
+      case "provider":
+        return cam.provider;
+    }
+  };
+
+  return [...cams].sort((a, b) =>
+    // localeCompare with numeric so "Camera 2" precedes "Camera 10", and
+    // accented place names sort where a reader expects rather than after z.
+    keyOf(a).localeCompare(keyOf(b), undefined, { numeric: true, sensitivity: "base" }) ||
+    a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" })
+  );
 }
 
 /** Moves an item, shifting everything between rather than swapping the two. */
@@ -147,8 +215,10 @@ function DashboardTile({
       } ${dragging ? "scale-[0.97] opacity-40" : "opacity-100"} ${
         dropTarget ? "border-sky-400" : "border-wev-border"
       }`}
-      // Without this a touch-drag scrolls the panel instead of moving the tile.
-      style={{ touchAction: "none" }}
+      // pan-y, not none. `none` handed every touch to the drag logic and
+      // left the wall unscrollable on a phone; this lets the browser do
+      // its normal vertical scroll and the drag arms on a long press.
+      style={{ touchAction: "pan-y" }}
     >
       <div className={fill ? "h-full w-full" : "aspect-[4/3] w-full"}>
         {failed ? (
@@ -220,13 +290,15 @@ export function MulticamDashboard({
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
   const [columnOverride, setColumnOverride] = useState<number | null>(loadStoredColumns);
   const [expanded, setExpanded] = useState(false);
+  const [sort, setSort] = useState<WallSort>("manual");
 
   /** The tile being examined full-size, if any. */
   const [inspecting, setInspecting] = useState<PublicCam | null>(null);
 
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
-  const dragOrigin = useRef<{ x: number; y: number; index: number } | null>(null);
+  const dragOrigin = useRef<{ x: number; y: number; index: number; armed: boolean } | null>(null);
+  const longPressTimer = useRef<number | undefined>(undefined);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -307,11 +379,11 @@ export function MulticamDashboard({
   const columns = Math.min(
     columnOverride ?? autoColumns,
     Math.max(1, cams.length),
-    // Applies to the manual override too. Letting someone dial 6 columns
-    // on a 390px phone would recreate the exact unreadable wall this cap
-    // exists to prevent, and the -/+ readout below reports the capped
-    // number so the control never disagrees with what's on screen.
-    fittingColumns(gridWidth, 10)
+    // Two different floors. The automatic choice stays cautious, but an
+    // explicit -/+ press is someone telling us they want more on screen
+    // than the safe default - on a phone that is the difference between
+    // two columns and four - so it is allowed a smaller tile.
+    fittingColumns(gridWidth, 10, columnOverride === null ? TILE_MIN_PX : TILE_MIN_MANUAL_PX)
   );
   const rows = Math.max(1, Math.ceil(cams.length / columns));
   /**
@@ -322,7 +394,30 @@ export function MulticamDashboard({
   const rowsFitOnScreen = gridHeight === 0 || rows * ROW_MIN_PX <= gridHeight;
 
   /** Ceiling the -/+ control obeys, so it can't request a wall we won't draw. */
-  const maxColumns = Math.min(12, Math.max(1, cams.length), fittingColumns(gridWidth, 10));
+  const maxColumns = Math.min(
+    12,
+    Math.max(1, cams.length),
+    fittingColumns(gridWidth, 10, TILE_MIN_MANUAL_PX)
+  );
+
+  /**
+   * Sorting commits: it reorders the wall itself and returns the control
+   * to "Arranged".
+   *
+   * The alternative - keeping the sort as a lens over a separately-held
+   * order - means a drag while sorted has no coherent meaning, and the
+   * saved wall would differ from the one on screen. Committing keeps one
+   * order in play at all times, and it stays draggable afterwards.
+   */
+  const applySort = useCallback(
+    (value: WallSort) => {
+      setSort("manual");
+      if (value === "manual") return;
+      const next = sortCams(cams, value);
+      if (next.some((cam, index) => cam.id !== cams[index]?.id)) onReorder(next);
+    },
+    [cams, onReorder]
+  );
 
   const setColumns = useCallback((value: number | null) => {
     setColumnOverride(value);
@@ -345,7 +440,26 @@ export function MulticamDashboard({
     (index: number) => (event: React.PointerEvent) => {
       // Left button / touch / pen only.
       if (event.button !== 0) return;
-      dragOrigin.current = { x: event.clientX, y: event.clientY, index };
+
+      // A mouse can arm immediately: it has a separate scroll mechanism,
+      // so a press on a tile is unambiguous. A finger cannot - the same
+      // gesture means both "scroll" and "move this" - so touch has to
+      // hold still to say which.
+      const armed = event.pointerType !== "touch";
+      dragOrigin.current = { x: event.clientX, y: event.clientY, index, armed };
+
+      if (!armed) {
+        window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = window.setTimeout(() => {
+          const origin = dragOrigin.current;
+          if (!origin) return;
+          origin.armed = true;
+          // Confirms the pickup, since nothing has visibly happened yet.
+          navigator.vibrate?.(15);
+          setDragIndex(origin.index);
+        }, LONG_PRESS_MS);
+      }
+
       (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     },
     []
@@ -356,10 +470,21 @@ export function MulticamDashboard({
       const origin = dragOrigin.current;
       if (!origin) return;
 
+      const moved = Math.hypot(event.clientX - origin.x, event.clientY - origin.y);
+
+      // Moving before the hold completes means this was a scroll, not a
+      // pickup. Abandon it and let the browser get on with scrolling.
+      if (!origin.armed) {
+        if (moved >= DRAG_THRESHOLD_PX) {
+          window.clearTimeout(longPressTimer.current);
+          dragOrigin.current = null;
+        }
+        return;
+      }
+
       // Only promote to a drag once the pointer has actually travelled —
       // otherwise every tap would be treated as a drag.
       if (dragIndex === null) {
-        const moved = Math.hypot(event.clientX - origin.x, event.clientY - origin.y);
         if (moved < DRAG_THRESHOLD_PX) return;
         setDragIndex(origin.index);
       }
@@ -369,6 +494,7 @@ export function MulticamDashboard({
     };
 
     const onUp = () => {
+      window.clearTimeout(longPressTimer.current);
       const origin = dragOrigin.current;
       dragOrigin.current = null;
       if (dragIndex !== null && overIndex !== null && origin) {
@@ -442,6 +568,26 @@ export function MulticamDashboard({
           </div>
 
           <div className="flex items-center gap-1">
+            {cams.length > 1 && (
+              <label className="mr-1 flex items-center gap-1 rounded border border-wev-border bg-wev-panel-2 px-1.5 py-0.5">
+                <span className="sr-only">Sort cameras</span>
+                <svg viewBox="0 0 24 24" className="h-3 w-3 text-wev-muted" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 7h11M4 12h7M4 17h4M17 8v9m0 0 3-3m-3 3-3-3" />
+                </svg>
+                <select
+                  value={sort}
+                  onChange={(event) => applySort(event.target.value as WallSort)}
+                  className="cursor-pointer bg-transparent py-0.5 text-[11px] text-wev-muted outline-none transition-colors hover:text-wev-text"
+                >
+                  {SORTS.map((option) => (
+                    <option key={option.value} value={option.value} className="bg-wev-panel text-wev-text">
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             <div className="mr-1 flex items-center gap-0.5 rounded border border-wev-border bg-wev-panel-2 px-1">
               <button
                 type="button"
