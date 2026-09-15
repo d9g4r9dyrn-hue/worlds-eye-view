@@ -50,3 +50,13 @@ Most US states and Canadian provinces run the same 511 vendor platform, so
 adding one is a single entry in `STATES` in `sources/onestop511.ts` — but
 confirm it actually answers `/List/GetData/Cameras` first, since a fair
 number run different software. Anything else needs its own adapter.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
