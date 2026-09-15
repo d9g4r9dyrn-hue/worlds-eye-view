@@ -18,6 +18,8 @@
  * ever scaled horizontally, which it shouldn't (see DEPLOY.md).
  */
 
+import { isIPv6 } from "node:net";
+
 export interface RateLimitRule {
   /** Requests allowed per window. */
   limit: number;
@@ -55,21 +57,38 @@ function sweep(now: number) {
 }
 
 /**
- * Best-effort client identity.
+ * The client address to gate on.
  *
- * Behind Railway the socket address is the proxy, so the real client is
- * the first entry of x-forwarded-for. That header is spoofable in
- * general, but here it's set by the platform's own edge, and the
- * consequence of a spoof is only that an abuser splits themselves across
- * more buckets — no worse than not having a limit at all.
+ * x-forwarded-for is a list each proxy appends to, so the leftmost entry is
+ * whatever the caller typed and the rightmost is what Railway's edge
+ * actually saw. This used to read the leftmost, which let any caller mint a
+ * fresh, unthrottled bucket per request by sending one header: harmless for
+ * the camera proxy it was written for, but the sign-in route now uses it
+ * too, and there an unthrottled bucket per request is a password guesser's
+ * best friend. Reported against the news site (PR 44) and again in the
+ * Skyline review.
+ *
+ * An IPv6 client usually controls a whole /64, so the /64 rather than the
+ * exact address is the unit that corresponds to one customer.
  */
 export function clientKey(request: Request): string {
   const forwarded = request.headers.get("x-forwarded-for");
   if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
+    const hops = forwarded.split(",").map((hop) => hop.trim()).filter(Boolean);
+    if (hops.length) return networkKey(hops[hops.length - 1]);
   }
-  return request.headers.get("x-real-ip")?.trim() || "unknown";
+  const real = request.headers.get("x-real-ip")?.trim();
+  return real ? networkKey(real) : "unknown";
+}
+
+function networkKey(ip: string): string {
+  if (!isIPv6(ip)) return ip;
+  const [head] = ip.split("%");
+  const parts = head.split("::");
+  const left = parts[0] ? parts[0].split(":") : [];
+  const right = parts[1] ? parts[1].split(":") : [];
+  const full = parts.length === 2 ? [...left, ...Array(8 - left.length - right.length).fill("0"), ...right] : left;
+  return `${full.slice(0, 4).map((h) => h.toLowerCase().replace(/^0+(?=.)/, "")).join(":")}::/64`;
 }
 
 export interface RateLimitResult {

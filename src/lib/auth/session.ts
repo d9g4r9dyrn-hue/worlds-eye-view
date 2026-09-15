@@ -122,27 +122,61 @@ const TOKEN_TTL_MINUTES: Record<TokenPurpose, number> = {
   reset_password: 60,
 };
 
+/** Verification links outstanding per account: enough for a few lost emails, not enough to fill an inbox. */
+const MAX_VERIFY_TOKENS = 3;
+
 /**
  * Mints a single-use token and returns the raw value for emailing. Only
  * its hash is stored, so a database leak yields nothing usable.
+ *
+ * `pendingPasswordHash` belongs to verification links only; see the note on
+ * email_tokens.password_hash in src/lib/db.ts for what it is for.
  */
-export async function createEmailToken(userId: number, purpose: TokenPurpose): Promise<string> {
+export async function createEmailToken(
+  userId: number,
+  purpose: TokenPurpose,
+  pendingPasswordHash: string | null = null
+): Promise<string> {
   const token = randomBytes(TOKEN_BYTES).toString("base64url");
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MINUTES[purpose] * 60_000);
 
-  // One live token per purpose per user: minting a new one invalidates
-  // the old, so a forwarded or intercepted earlier link goes dead as
-  // soon as the user asks for another.
-  await getPool().query(`DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2`, [
-    userId,
-    purpose,
-  ]);
+  if (purpose === "reset_password") {
+    // One live reset link per user: minting a new one invalidates the old,
+    // so a forwarded or intercepted earlier link goes dead as soon as the
+    // user asks for another.
+    await getPool().query(`DELETE FROM email_tokens WHERE user_id = $1 AND purpose = $2`, [userId, purpose]);
+  } else {
+    // Verification links are NOT replaced by newer ones. Each carries its
+    // own registrant's password, and letting a stranger's sign-up kill the
+    // owner's link would be a way to push the owner onto the stranger's
+    // link instead. Only the oldest beyond the cap are dropped.
+    await getPool().query(
+      `DELETE FROM email_tokens WHERE token_hash IN (
+         SELECT token_hash FROM email_tokens WHERE user_id = $1 AND purpose = $2
+          ORDER BY created_at DESC OFFSET $3)`,
+      [userId, purpose, MAX_VERIFY_TOKENS - 1]
+    );
+  }
+
   await getPool().query(
-    `INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at) VALUES ($1, $2, $3, $4)`,
-    [hashToken(token), userId, purpose, expiresAt]
+    `INSERT INTO email_tokens (token_hash, user_id, purpose, expires_at, password_hash) VALUES ($1, $2, $3, $4, $5)`,
+    [hashToken(token), userId, purpose, expiresAt, pendingPasswordHash]
   );
 
   return token;
+}
+
+/** Reads a live token without spending it. */
+export async function peekEmailToken(
+  token: string,
+  purpose: TokenPurpose
+): Promise<{ userId: number; passwordHash: string | null } | null> {
+  const { rows } = await getPool().query(
+    `SELECT user_id, password_hash FROM email_tokens
+      WHERE token_hash = $1 AND purpose = $2 AND expires_at > now()`,
+    [hashToken(token), purpose]
+  );
+  return rows[0] ? { userId: Number(rows[0].user_id), passwordHash: rows[0].password_hash ?? null } : null;
 }
 
 /** Consumes a token, returning the user id it belonged to. Single use. */

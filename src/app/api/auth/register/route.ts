@@ -68,31 +68,41 @@ export async function POST(request: Request) {
    */
   const sameAnswer = NextResponse.json({
     ok: true,
-    message: "Check your email for a link to confirm the address.",
+    message: "Check your email for a link to confirm the address. You'll enter this same password to finish.",
   });
+
+  /*
+   * The password is hashed on every path, including the one that does
+   * nothing with it, so that response time does not say whether the
+   * address already has an account.
+   */
+  const hash = await hashPassword(password);
 
   if (existing.rows[0]) {
     const userId = Number(existing.rows[0].id);
     const verified = Boolean(existing.rows[0].emailVerified);
 
     /*
-     * An *unverified* account has no proven owner.
+     * An *unverified* account has no proven owner, so a fresh link goes
+     * out and the new password rides along ON THE LINK rather than being
+     * written to the account.
      *
-     * Nobody has yet demonstrated control of this address, so the row
-     * is not yet anybody's property and re-registering simply takes it
-     * over: the new password replaces the old and a fresh link goes
-     * out. That cannot harm a real owner, because a real owner would
-     * have verified — and without it, an account whose first email was
-     * lost, mistyped or filtered is stuck forever with no way back,
-     * which is the far more likely and far worse outcome.
+     * This used to overwrite the account's password outright, on the
+     * reasoning that nobody had proven ownership yet. That was wrong: an
+     * attacker could register an address whose real owner had signed up
+     * and not yet clicked, which also mailed that owner a fresh link. The
+     * owner clicked it, and their account went live carrying the
+     * attacker's password. Now the password becomes real only when the
+     * link is redeemed together with it, so the attacker's link is
+     * useless to the owner and the owner's link is useless to the
+     * attacker. An account whose first email was lost is still
+     * recoverable, which was the point of the original behaviour.
      *
-     * It also covers the case of an account created by an earlier
-     * Google sign-in, which has no password at all.
+     * It also covers an account created by an earlier Google sign-in,
+     * which has no password at all.
      */
     if (!verified) {
-      const hash = await hashPassword(password);
-      await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [hash, userId]);
-      const token = await createEmailToken(userId, "verify_email");
+      const token = await createEmailToken(userId, "verify_email", hash);
       await sendVerificationEmail(email, token).catch((error) =>
         console.warn("[auth] verification email failed:", error)
       );
@@ -107,14 +117,11 @@ export async function POST(request: Request) {
     return sameAnswer;
   }
 
-  const hash = await hashPassword(password);
-  const { rows } = await pool.query(
-    `INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id`,
-    [email, name, hash]
-  );
+  // No password on the row yet: it arrives when the link is confirmed.
+  const { rows } = await pool.query(`INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id`, [email, name]);
   const userId = Number(rows[0].id);
 
-  const token = await createEmailToken(userId, "verify_email");
+  const token = await createEmailToken(userId, "verify_email", hash);
   await sendVerificationEmail(email, token).catch((error) =>
     console.warn("[auth] verification email failed:", error)
   );

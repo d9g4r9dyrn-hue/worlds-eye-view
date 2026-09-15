@@ -39,6 +39,15 @@ async function deliver(message: Message): Promise<void> {
   const key = process.env.RESEND_API_KEY;
 
   if (!key) {
+    /*
+     * The body carries a confirmation or reset link, and those links are
+     * credentials: anyone who can read the logs could take over an account
+     * with one. Printing them is a local development convenience only.
+     */
+    if (process.env.NODE_ENV === "production") {
+      console.error(`[auth] RESEND_API_KEY is not set: "${message.subject}" was NOT sent, and its contents were not logged.`);
+      return;
+    }
     console.warn(
       `[auth] RESEND_API_KEY is not set — email NOT sent.\n` +
         `       to: ${message.to}\n` +

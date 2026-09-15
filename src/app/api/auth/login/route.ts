@@ -60,6 +60,31 @@ export async function POST(request: Request) {
   const row = rows[0];
   const stored = row?.password_hash as string | null | undefined;
 
+  /*
+   * An account waiting on its first confirmation has no password of its
+   * own; the one chosen at sign-up is held on the verification link (see
+   * the verify route). So "confirm your email first" is said only to
+   * someone who typed the password from a live link for this address,
+   * which tells them nothing they did not already know. Anyone else gets
+   * the same answer as a wrong password.
+   */
+  if (row && !row.emailVerified && !stored) {
+    const pending = await getPool().query(
+      `SELECT password_hash FROM email_tokens
+        WHERE user_id = $1 AND purpose = 'verify_email' AND expires_at > now() AND password_hash IS NOT NULL
+        ORDER BY created_at DESC LIMIT 1`,
+      [row.id]
+    );
+    const hash = (pending.rows[0]?.password_hash as string | undefined) ?? (await getDecoyHash());
+    if (pending.rows[0] && (await verifyPassword(password, hash))) {
+      return NextResponse.json(
+        { error: "Confirm your email address first: open the link we sent you.", unverified: true },
+        { status: 403 }
+      );
+    }
+    return NextResponse.json({ error: "Email or password is incorrect." }, { status: 401 });
+  }
+
   const matched = stored
     ? await verifyPassword(password, stored)
     : // Burn the same time as a real check before failing.

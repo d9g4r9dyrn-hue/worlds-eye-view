@@ -189,6 +189,23 @@ const SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS email_tokens_user_idx ON email_tokens(user_id, purpose);
+
+  /*
+   * The password chosen by whoever asked for a verification link, carried
+   * on the link's own row instead of being written straight to the account.
+   *
+   * Without this, registering an address that had signed up but not yet
+   * confirmed replaced that account's password. An attacker could register
+   * someone else's pending address, which also sent the real owner a fresh
+   * link; the owner clicked it, and the account was live with the
+   * attacker's password on it. Now the password applies only when the link
+   * is redeemed together with it, so a stranger's link is useless to the
+   * owner and the owner's link is useless to the stranger.
+   *
+   * Null on rows made before this change, and on reset_password rows, which
+   * never carry one.
+   */
+  ALTER TABLE email_tokens ADD COLUMN IF NOT EXISTS password_hash TEXT;
 `;
 
 /**
