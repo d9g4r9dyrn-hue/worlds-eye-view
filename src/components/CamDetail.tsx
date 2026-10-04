@@ -20,12 +20,15 @@ export function CamDetail({
   inWall,
   onToggleWall,
   onOpenWall,
+  onShare,
   onClose,
 }: {
   cam: PublicCam;
   inWall: boolean;
   onToggleWall: () => void;
   onOpenWall: () => void;
+  /** Absent where there is no map view to link to, and then no button is shown. */
+  onShare?: () => void;
   onClose: () => void;
 }) {
   const [version, setVersion] = useState(0);
@@ -185,6 +188,19 @@ export function CamDetail({
             >
               Open
             </button>
+          )}
+          {onShare && (
+          <button
+            type="button"
+            onClick={onShare}
+            className="flex items-center gap-1.5 rounded-md border border-wev-border bg-wev-panel-2 px-3 py-1.5 text-xs font-medium text-wev-text transition-colors hover:border-sky-700 hover:text-wev-accent"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 15V3M8 7l4-4 4 4" />
+              <path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" />
+            </svg>
+            Share
+          </button>
           )}
         </div>
 

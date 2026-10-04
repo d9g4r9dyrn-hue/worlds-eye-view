@@ -60,6 +60,13 @@ const PLACEHOLDER_MIN_MEAN = 200;
 const PLACEHOLDER_MAX_ENTROPY = 3.5;
 
 /**
+ * Mean brightness below which an opted-in camera's frame counts as black.
+ * The darkest real night frame measured for the placeholder rule above
+ * had a mean of 17, so this sits well under anything with a light in it.
+ */
+const BLACK_MAX_MEAN = 8;
+
+/**
  * How long to remember that a camera is down. Without this, a dead camera
  * is re-fetched and re-decoded on every single request, since only
  * successes go in the frame cache.
@@ -221,6 +228,17 @@ async function isPlaceholderCard(original: Buffer): Promise<boolean> {
   }
 }
 
+/** Black with nothing in it. Only consulted for cameras that opt in, see Cam.hideWhenBlack. */
+async function isBlackFrame(original: Buffer): Promise<boolean> {
+  try {
+    const stats = await sharp(original, { failOn: "none" }).stats();
+    const mean = stats.channels.reduce((sum, channel) => sum + channel.mean, 0) / stats.channels.length;
+    return mean < BLACK_MAX_MEAN;
+  } catch {
+    return false;
+  }
+}
+
 async function loadFrame(cam: Cam, thumbnail: boolean): Promise<CachedFrame> {
   const original = await fetchUpstream(cam);
 
@@ -240,6 +258,10 @@ async function loadFrame(cam: Cam, thumbnail: boolean): Promise<CachedFrame> {
     // and the detail panel says the camera isn't responding, which is the
     // truth the placeholder was trying to convey anyway.
     throw new Error(`${cam.id} returned an "unavailable" placeholder image`);
+  }
+
+  if (cam.hideWhenBlack && (await isBlackFrame(original))) {
+    throw new Error(`${cam.id} is dark and has nothing lit in view`);
   }
 
   if (!thumbnail) {

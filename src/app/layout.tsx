@@ -1,9 +1,18 @@
 import type { Metadata, Viewport } from "next";
 import { SiteHeader } from "@/components/SiteHeader";
+import { OG_HEIGHT, OG_WIDTH } from "@/lib/share/view";
 import "./globals.css";
 
 const DESCRIPTION =
   "Thousands of public webcams quilted onto one satellite map. Volcanoes, harbours, city streets and highways, updating live — zoom in and the world fills with windows.";
+
+/**
+ * The picture shown when the bare site is shared. Drawn on request from
+ * the live map (see /api/og), so it is today's cameras and not a
+ * screenshot that ages. Links to a particular view replace it with a
+ * picture of that view in app/view/page.tsx.
+ */
+const PREVIEW = { url: "/api/og", width: OG_WIDTH, height: OG_HEIGHT, alt: "Live webcams laid out on a satellite map" };
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://cams.corticorp.com"),
@@ -16,8 +25,9 @@ export const metadata: Metadata = {
     title: "World's Eye View",
     description: DESCRIPTION,
     url: "/",
+    images: [PREVIEW],
   },
-  twitter: { card: "summary_large_image", title: "World's Eye View", description: DESCRIPTION },
+  twitter: { card: "summary_large_image", title: "World's Eye View", description: DESCRIPTION, images: [PREVIEW] },
   robots: { index: true, follow: true },
 };
 

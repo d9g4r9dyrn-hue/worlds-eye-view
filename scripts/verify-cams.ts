@@ -24,6 +24,19 @@ import { singaporeSource } from "../src/lib/cams/sources/singapore";
 import { hongKongSource } from "../src/lib/cams/sources/hongkong";
 import { avoSource } from "../src/lib/cams/sources/avo";
 import { windySource } from "../src/lib/cams/sources/windy";
+import { carsProgramSource } from "../src/lib/cams/sources/carsprogram";
+import { dgtSource } from "../src/lib/cams/sources/dgt";
+import { wsdotSource } from "../src/lib/cams/sources/wsdot";
+import { ohgoSource } from "../src/lib/cams/sources/ohgo";
+import { tripCheckSource } from "../src/lib/cams/sources/tripcheck";
+import { travelMidwestSource } from "../src/lib/cams/sources/travelmidwest";
+import { iterisSource } from "../src/lib/cams/sources/iteris";
+import { miDriveSource } from "../src/lib/cams/sources/midrive";
+import { nswSource } from "../src/lib/cams/sources/nsw";
+import { ndDotSource } from "../src/lib/cams/sources/nddot";
+import { vegagerdinSource } from "../src/lib/cams/sources/vegagerdin";
+import { qldTrafficSource } from "../src/lib/cams/sources/qldtraffic";
+import { ndbcSource } from "../src/lib/cams/sources/ndbc";
 import { curatedSource, PROMOTIONS } from "../src/lib/cams/sources/curated";
 import type { Cam, CamSource } from "../src/lib/cams/types";
 
@@ -38,6 +51,19 @@ const SOURCES: CamSource[] = [
   driveBcSource,
   hongKongSource,
   singaporeSource,
+  carsProgramSource,
+  dgtSource,
+  wsdotSource,
+  ohgoSource,
+  tripCheckSource,
+  travelMidwestSource,
+  iterisSource,
+  miDriveSource,
+  nswSource,
+  ndDotSource,
+  vegagerdinSource,
+  qldTrafficSource,
+  ndbcSource,
   windySource,
 ];
 

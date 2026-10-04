@@ -13,16 +13,24 @@ continent, or a city dark hours before its neighbour.
 
 ## Where the cameras come from
 
-Around **27,700 cameras**, all from feeds that are public and need no key:
+Around **44,000 cameras** from feeds that are public and need no key, plus about 7,000 more from Windy when its key is set:
 
 | Source | Roughly | Covers |
 | --- | --- | --- |
-| 511 traveler-information sites | 21,400 | 14 US states + 8 Canadian provinces/territories |
+| 511 traveler-information sites | 18,900 | 13 US states + 9 Canadian provinces/territories |
+| Castle Rock 511 sites | 8,000 | New York, Minnesota, Colorado, Iowa, Indiana, Kansas, Nebraska, Massachusetts |
+| DGT | 1,950 | Spain |
+| WSDOT, TripCheck, OHGO, TravelMidwest, MiDrive | 5,900 | Washington, Oregon, Ohio, Illinois, Michigan |
+| Iteris 511 sites, NDDOT | 1,050 | South Carolina, South Dakota, Montana, North Dakota |
+| Hong Kong Transport Department | 1,010 | Hong Kong |
+| Transport for NSW, QLDTraffic | 380 | New South Wales and Queensland |
+| Vegagerðin | 165 | Iceland |
+| NOAA buoy cameras | 77 | Open ocean; hidden while their frame is black at night |
 | Caltrans CCTV | 3,400 | California highways |
 | DriveBC | 1,030 | British Columbia — runs its own software, not the 511 platform |
 | Fintraffic | 810 | Finland — the far north gets genuine polar night |
 | Transport for London JamCams | 780 | Greater London |
-| NZ Transport Agency | 260 | New Zealand — the only southern-hemisphere source |
+| NZ Transport Agency | 250 | New Zealand |
 | USGS Alaska Volcano Observatory | 64 | Alaska volcanoes and downwind communities |
 | LTA Singapore | 8 | Singapore expressways — small, but the only Asian source |
 | Windy Webcams *(optional)* | — | Worldwide, needs `WINDY_API_KEY` |

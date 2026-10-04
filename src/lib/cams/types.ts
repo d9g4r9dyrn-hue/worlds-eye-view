@@ -57,6 +57,16 @@ export interface Cam {
    * result field by field, so this can't leak to the browser.
    */
   resolveStillUrl?: (cam: Cam) => Promise<string>;
+  /**
+   * Treat an all-black frame as the camera being unavailable.
+   *
+   * Off for nearly everything, because a dark frame normally means it is
+   * night there and that is worth seeing: streetlights, headlights, a lit
+   * runway. It is for cameras with nothing lit in view, such as a buoy in
+   * mid-ocean, whose night frame is a plain black rectangle and says
+   * nothing a blank patch of sea does not. Server-side only.
+   */
+  hideWhenBlack?: boolean;
   /** Roughly how often the upstream image actually changes. Sets the thumbnail cache TTL. */
   refreshSeconds: number;
   /** Human-facing page for this cam — attribution, and "view the original". */

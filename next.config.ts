@@ -43,6 +43,36 @@ const nextConfig: NextConfig = {
 
   poweredByHeader: false,
 
+  /**
+   * A link to a particular view gets its own preview.
+   *
+   * The home page is a static shell, and static pages cannot vary their
+   * metadata by query string. So a request carrying a view is served by
+   * /view instead, which renders per request and can describe that view
+   * to a crawler, while the address stays exactly what was shared. A bare
+   * / matches nothing here and is still served from the prerender.
+   *
+   * It has to be in beforeFiles: ordinary rewrites are only consulted
+   * after the filesystem, and / always exists.
+   */
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/",
+          has: [
+            { type: "query", key: "lat" },
+            { type: "query", key: "lon" },
+            { type: "query", key: "zoom" },
+          ],
+          destination: "/view",
+        },
+      ],
+      afterFiles: [],
+      fallback: [],
+    };
+  },
+
   async headers() {
     return [
       {
@@ -52,7 +82,11 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
+          // geolocation is allowed for this origin because "My location" in
+          // the camera finder asks for it. It used to be switched off
+          // here, which made the browser refuse without ever prompting,
+          // and the feature reported that as the visitor declining.
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(self), interest-cohort=()" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
         ],
       },

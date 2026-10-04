@@ -9,6 +9,19 @@ import { nztaSource } from "./sources/nzta";
 import { driveBcSource } from "./sources/drivebc";
 import { singaporeSource } from "./sources/singapore";
 import { hongKongSource } from "./sources/hongkong";
+import { carsProgramSource } from "./sources/carsprogram";
+import { dgtSource } from "./sources/dgt";
+import { wsdotSource } from "./sources/wsdot";
+import { ohgoSource } from "./sources/ohgo";
+import { tripCheckSource } from "./sources/tripcheck";
+import { travelMidwestSource } from "./sources/travelmidwest";
+import { iterisSource } from "./sources/iteris";
+import { miDriveSource } from "./sources/midrive";
+import { nswSource } from "./sources/nsw";
+import { ndDotSource } from "./sources/nddot";
+import { vegagerdinSource } from "./sources/vegagerdin";
+import { qldTrafficSource } from "./sources/qldtraffic";
+import { ndbcSource } from "./sources/ndbc";
 import { curatedSource, PROMOTIONS } from "./sources/curated";
 
 /**
@@ -48,6 +61,29 @@ const SOURCES: RegisteredSource[] = [
   { source: nztaSource, ttlMs: 6 * HOUR },
   { source: driveBcSource, ttlMs: 6 * HOUR },
   { source: hongKongSource, ttlMs: 6 * HOUR },
+  // Added together on 2026-10-04. Each file's header says what was
+  // measured. TravelMidwest's roster is one slow request, so it is read
+  // half as often; the ocean buoys are read hourly so a station that has
+  // stopped sending pictures drops out.
+  //
+  // sources/faaweathercams.ts exists and is deliberately not listed. The
+  // FAA's API refuses a request that does not claim, in its Referer, to
+  // come from the FAA's own site. Sending that header would be dressing
+  // up as their page to get past a guard, which is a different thing
+  // from reading a feed an agency publishes, so it waits on a decision.
+  { source: carsProgramSource, ttlMs: 6 * HOUR },
+  { source: dgtSource, ttlMs: 6 * HOUR },
+  { source: wsdotSource, ttlMs: 6 * HOUR },
+  { source: ohgoSource, ttlMs: 6 * HOUR },
+  { source: tripCheckSource, ttlMs: 6 * HOUR },
+  { source: travelMidwestSource, ttlMs: 12 * HOUR },
+  { source: iterisSource, ttlMs: 6 * HOUR },
+  { source: miDriveSource, ttlMs: 6 * HOUR },
+  { source: nswSource, ttlMs: 6 * HOUR },
+  { source: ndDotSource, ttlMs: 6 * HOUR },
+  { source: vegagerdinSource, ttlMs: 6 * HOUR },
+  { source: qldTrafficSource, ttlMs: 6 * HOUR },
+  { source: ndbcSource, ttlMs: 1 * HOUR },
   // Singapore republishes every frame under a fresh UUID, so a stale
   // roster points at frames that no longer exist — same failure mode as
   // AVO, and the same short TTL.
@@ -90,9 +126,26 @@ interface SourceState {
  */
 const globalForCams = globalThis as typeof globalThis & {
   __wevSourceState?: Map<string, SourceState>;
+  __wevCatalogMemo?: { generation: number; built: number; catalog: Catalog | null };
 };
 
 const state: Map<string, SourceState> = (globalForCams.__wevSourceState ??= new Map<string, SourceState>());
+
+/**
+ * The merged catalogue, kept until a source next changes.
+ *
+ * Merging is tens of thousands of Map insertions, and it used to run on
+ * every call. That was invisible for the viewport query, which runs once
+ * per pan, but the thumbnail proxy resolves an id through the same
+ * function and a single map view asks for well over a hundred thumbnails,
+ * so one visitor arriving cost the event loop a hundred full rebuilds.
+ * `generation` moves whenever any source finishes a refresh, successful
+ * or not, and the merge is redone only when it has moved.
+ *
+ * On globalThis for the same reason as the source state: the counter and
+ * the state it describes must not end up in different bundles.
+ */
+const memo = (globalForCams.__wevCatalogMemo ??= { generation: 0, built: -1, catalog: null });
 
 function stateFor(key: string): SourceState {
   let existing = state.get(key);
@@ -134,6 +187,7 @@ function refresh(entry: RegisteredSource): Promise<void> {
       console.warn(`[cams] ${entry.source.key} failed:`, error);
     } finally {
       current.inFlight = null;
+      memo.generation++;
     }
   })();
 
@@ -170,6 +224,12 @@ export async function getCatalog(): Promise<Catalog> {
 
   if (coldLoads.length > 0) await Promise.allSettled(coldLoads);
 
+  if (memo.catalog && memo.built === memo.generation) return memo.catalog;
+  // Read before merging: a refresh that lands mid-merge then leaves the
+  // memo looking stale, and the next call rebuilds rather than serving a
+  // catalogue that is missing that source's new roster.
+  const generation = memo.generation;
+
   const cams: Cam[] = [];
   const byId = new Map<string, Cam>();
   const sources: Catalog["sources"] = [];
@@ -200,13 +260,28 @@ export async function getCatalog(): Promise<Catalog> {
     }
   }
 
-  return { cams, byId, sources };
+  const catalog = { cams, byId, sources };
+  memo.catalog = catalog;
+  memo.built = generation;
+  return catalog;
 }
 
 /** Resolving an id through the catalogue is what stops the thumbnail proxy being an open image proxy. */
 export async function getCamById(id: string): Promise<Cam | null> {
   const catalog = await getCatalog();
   return catalog.byId.get(id) ?? null;
+}
+
+/**
+ * Looks a camera up in whatever has already loaded, without starting or
+ * waiting on a fetch.
+ *
+ * For callers that would rather have no answer than a slow one. The link
+ * preview is the case in point: a crawler gives up after a few seconds,
+ * so its page must never sit behind a cold catalogue load.
+ */
+export function peekCamById(id: string): Cam | null {
+  return memo.catalog?.byId.get(id) ?? null;
 }
 
 export interface CatalogSnapshot {

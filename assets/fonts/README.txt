@@ -1,0 +1,1 @@
+Geist Regular, copyright The Geist Project Authors (https://github.com/vercel/geist-font), licensed under the SIL Open Font License 1.1 (https://openfontlicense.org). Used by src/lib/share/ogImage.ts to draw text on link-preview images, because the host has no system fonts.

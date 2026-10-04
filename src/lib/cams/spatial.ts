@@ -42,6 +42,15 @@ export function project(lat: number, lon: number, zoom: number): PixelPoint {
   };
 }
 
+/** The inverse of `project`: a pixel position at a zoom back to a coordinate. */
+export function unproject(x: number, y: number, zoom: number): { lat: number; lon: number } {
+  const scale = TILE_SIZE * Math.pow(2, zoom);
+  const lon = (x / scale) * 360 - 180;
+  const n = Math.PI * (1 - (2 * y) / scale);
+  const lat = (Math.atan(Math.sinh(n)) * 180) / Math.PI;
+  return { lat: Math.max(-MAX_LATITUDE, Math.min(MAX_LATITUDE, lat)), lon };
+}
+
 /**
  * Thumbnail edge length in pixels at a given zoom.
  *
@@ -132,21 +141,86 @@ export function thinForViewport(cams: Cam[], options: ThinOptions): Cam[] {
   // which isn't a grid any more.
   const cell = thumbSize(zoom, 5) * spacing;
 
-  const best = new Map<string, { cam: Cam; score: number }>();
+  const best = new Map<string, Winner>();
 
   for (const cam of cams) {
     const point = project(cam.lat, cam.lon, zoom);
-    const key = `${Math.floor(point.x / cell)}:${Math.floor(point.y / cell)}`;
+    const cx = Math.floor(point.x / cell);
+    const cy = Math.floor(point.y / cell);
+    const key = `${cx}:${cy}`;
     const camScore = score(cam);
     const held = best.get(key);
 
     // Deterministic tiebreak on id — without it, two equal-scoring cameras
     // would swap places between refreshes and the thumbnail would flicker.
-    if (!held || camScore > held.score || (camScore === held.score && cam.id < held.cam.id)) {
-      best.set(key, { cam, score: camScore });
+    if (!held || beats(camScore, cam.id, held)) {
+      best.set(key, { cam, score: camScore, cx, cy });
     }
   }
 
-  const winners = [...best.values()].sort((a, b) => b.score - a.score || (a.cam.id < b.cam.id ? -1 : 1));
-  return winners.slice(0, limit).map((entry) => entry.cam);
+  const winners = [...best.values()];
+  if (winners.length <= limit) {
+    return winners.sort(byScoreThenSpread).map((entry) => entry.cam);
+  }
+
+  // More occupied cells than slots, which is the normal state of a
+  // continental view. Cutting the list by score alone hands every slot to
+  // the best-known cameras wherever they happen to cluster: the lower 48
+  // at zoom 5 came back as 140 cameras from a single source, chosen by
+  // how often each is viewed and not by where it is.
+  //
+  // So the slots are filled in two passes. First the winner of each
+  // coarser block of cells, coarsening until those fit, which guarantees
+  // every part of the view that has a camera shows one. Then whatever
+  // room is left goes to the best of the rest. Blocks are whole multiples
+  // of the fine grid and anchored to the world rather than the viewport,
+  // so a block's winner is always one of the fine winners and panning
+  // does not reshuffle who holds a slot.
+  let spread: Winner[] = [];
+  for (let block = 2; block <= 64; block *= 2) {
+    const coarse = new Map<string, Winner>();
+    for (const entry of winners) {
+      const key = `${Math.floor(entry.cx / block)}:${Math.floor(entry.cy / block)}`;
+      const held = coarse.get(key);
+      if (!held || beats(entry.score, entry.cam.id, held)) coarse.set(key, entry);
+    }
+    if (coarse.size <= limit) {
+      spread = [...coarse.values()];
+      break;
+    }
+  }
+
+  const taken = new Set(spread.map((entry) => entry.cam.id));
+  const rest = winners.filter((entry) => !taken.has(entry.cam.id)).sort(byScoreThenSpread);
+  return [...spread, ...rest.slice(0, limit - spread.length)].sort(byScoreThenSpread).map((entry) => entry.cam);
+}
+
+interface Winner {
+  cam: Cam;
+  score: number;
+  cx: number;
+  cy: number;
+}
+
+function beats(candidateScore: number, candidateId: string, held: Winner): boolean {
+  return candidateScore > held.score || (candidateScore === held.score && candidateId < held.cam.id);
+}
+
+/** A stable pseudo-random number per camera id. */
+function idHash(id: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < id.length; i++) hash = Math.imul(hash ^ id.charCodeAt(i), 16777619);
+  return hash >>> 0;
+}
+
+/**
+ * Best first, and equal scores in hash order rather than id order.
+ *
+ * Ids start with their source, so ordering ties alphabetically made the
+ * cut-off geographic: every Florida camera sorted ahead of every Georgia
+ * one. A hash is just as stable from one request to the next and has no
+ * opinion about where a camera is.
+ */
+function byScoreThenSpread(a: Winner, b: Winner): number {
+  return b.score - a.score || idHash(a.cam.id) - idHash(b.cam.id) || (a.cam.id < b.cam.id ? -1 : 1);
 }

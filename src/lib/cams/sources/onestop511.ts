@@ -14,6 +14,15 @@ import type { Cam, CamSource } from "../types";
  * listed; the ones that returned HTML or 404 (Iowa, Minnesota, Rhode
  * Island, Nebraska, Wyoming and DriveBC among them) are deliberately
  * absent rather than left in to fail on every refresh.
+ *
+ * New York used to be here. 511ny.org moved to the Castle Rock platform
+ * in 2026 and now answers this path with its app shell (HTML, status
+ * 200), so it lives in carsprogram.ts with the other Castle Rock states.
+ * A second sweep of about a hundred state and provincial hosts found
+ * only Saskatchewan still to add; Virginia, South Carolina, New Jersey,
+ * Ohio, Tennessee, Kansas, Oklahoma, Texas, Oregon, Washington, Quebec,
+ * Montana, the Dakotas and South Africa's i-traffic.co.za all returned
+ * HTML, 403 or 404 here.
  */
 
 interface StateSite {
@@ -63,14 +72,6 @@ const STATES: StateSite[] = [
     bounds: { south: 36, west: -85, north: 45, east: -71 },
   },
   {
-    key: "ny",
-    host: "511ny.org",
-    label: "NYSDOT",
-    region: "New York",
-    country: "United States",
-    bounds: { south: 37, west: -84, north: 47, east: -68 },
-  },
-  {
     key: "id",
     host: "511.idaho.gov",
     label: "Idaho Transportation Department",
@@ -101,6 +102,14 @@ const STATES: StateSite[] = [
     region: "Alberta",
     country: "Canada",
     bounds: { south: 46, west: -125, north: 62, east: -105 },
+  },
+  {
+    key: "sk",
+    host: "hotline.gov.sk.ca",
+    label: "Saskatchewan Highways",
+    region: "Saskatchewan",
+    country: "Canada",
+    bounds: { south: 46, west: -113, north: 62, east: -98 },
   },
   {
     key: "yt",
@@ -226,15 +235,28 @@ const STATES: StateSite[] = [
   },
 ];
 
-/** The platform caps a page at 100 rows whatever `length` asks for. */
-const PAGE_SIZE = 100;
+/**
+ * Page sizes to try, largest first. The platform caps a page at 100 rows
+ * whatever `length` asks for, and 100 is right for every site but one.
+ *
+ * Alberta answers `length: 100` with its HTML error page and a 500,
+ * every time, while 50 works (10, 25, 40 and 50 were accepted; 20, 60,
+ * 75, 99 and 100 were refused, which looks like a row that fails to
+ * serialise at particular offsets rather than a size limit). The retry
+ * loop only repeated the same request, so the province was absent from
+ * the map with nothing but a warning in the log. Falling back to a
+ * smaller page is general on purpose: the next site to develop the same
+ * fault recovers without anyone having to notice it first.
+ */
+const PAGE_SIZES = [100, 50];
 
 /**
  * Guard against a jurisdiction reporting an implausible recordsTotal.
  * Sized above the biggest real feed with room to spare — Florida alone
  * publishes ~4,800 cameras, so a lower cap silently truncated it.
+ * Counted in rows so the ceiling means the same thing at either page size.
  */
-const MAX_PAGES = 80;
+const MAX_ROWS = 8000;
 
 /** Attempts per page. These endpoints throw occasional 500s under paging. */
 const PAGE_ATTEMPTS = 3;
@@ -284,8 +306,12 @@ function parsePoint(wkt: string | undefined): { lat: number; lon: number } | nul
   return { lat, lon };
 }
 
-async function fetchPage(site: StateSite, start: number): Promise<{ rows: CameraRecord[]; total: number }> {
-  const query = encodeURIComponent(JSON.stringify({ columns: [], start, length: PAGE_SIZE }));
+async function fetchPage(
+  site: StateSite,
+  start: number,
+  length: number
+): Promise<{ rows: CameraRecord[]; total: number }> {
+  const query = encodeURIComponent(JSON.stringify({ columns: [], start, length }));
   const response = await fetch(`https://${site.host}/List/GetData/Cameras?query=${query}`, {
     headers: {
       // These endpoints sit behind the public map UI and return an HTML
@@ -365,11 +391,15 @@ function toCams(site: StateSite, rows: CameraRecord[]): Cam[] {
  * Georgia's page 1 and New York's page 25 in the same run. Retrying with
  * a short backoff clears almost all of them.
  */
-async function fetchPageWithRetry(site: StateSite, start: number): Promise<{ rows: CameraRecord[]; total: number }> {
+async function fetchPageWithRetry(
+  site: StateSite,
+  start: number,
+  length: number
+): Promise<{ rows: CameraRecord[]; total: number }> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= PAGE_ATTEMPTS; attempt++) {
     try {
-      return await fetchPage(site, start);
+      return await fetchPage(site, start, length);
     } catch (error) {
       lastError = error;
       if (attempt < PAGE_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, 400 * attempt));
@@ -379,15 +409,30 @@ async function fetchPageWithRetry(site: StateSite, start: number): Promise<{ row
 }
 
 async function fetchState(site: StateSite): Promise<Cam[]> {
-  const first = await fetchPageWithRetry(site, 0);
+  // The first page decides the page size for the whole jurisdiction: the
+  // largest one the site will actually answer. See PAGE_SIZES.
+  let pageSize = PAGE_SIZES[0];
+  let first: { rows: CameraRecord[]; total: number } | null = null;
+  let firstError: unknown;
+  for (const candidate of PAGE_SIZES) {
+    try {
+      first = await fetchPageWithRetry(site, 0, candidate);
+      pageSize = candidate;
+      break;
+    } catch (error) {
+      firstError = error;
+    }
+  }
+  if (!first) throw firstError;
+
   const cams = toCams(site, first.rows);
 
-  const pages = Math.min(MAX_PAGES, Math.ceil(first.total / PAGE_SIZE));
+  const pages = Math.ceil(Math.min(MAX_ROWS, first.total) / pageSize);
   let failedPages = 0;
 
   for (let page = 1; page < pages; page++) {
     try {
-      const next = await fetchPageWithRetry(site, page * PAGE_SIZE);
+      const next = await fetchPageWithRetry(site, page * pageSize, pageSize);
       // An empty page before the end is the platform telling us it's done.
       if (next.rows.length === 0) break;
       cams.push(...toCams(site, next.rows));

@@ -187,6 +187,83 @@ export async function geocode(query: string): Promise<GeocodeResult | null> {
   });
 }
 
+const NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse";
+
+const globalForPlaces = globalThis as typeof globalThis & {
+  __wevPlaceCache?: Map<string, string | null>;
+};
+
+const placeCache: Map<string, string | null> = (globalForPlaces.__wevPlaceCache ??= new Map());
+
+/**
+ * A short human name for a map view: "Tampa, Florida", "Iceland".
+ *
+ * Used by link previews, where "live cameras around Tampa" says what the
+ * link is and a pair of coordinates does not. How specific the name gets
+ * follows the zoom, because a continental view centred on Kansas is not
+ * "a view of Kansas".
+ *
+ * Resolves to null when there is nothing sensible to say: a view too far
+ * out to belong to one country, open ocean, or a geocoder that did not
+ * answer. Never throws, since every caller treats the name as optional.
+ * Goes through the same one-per-second gate as the forward geocoder and
+ * remembers every answer, including the empty ones.
+ */
+export async function placeLabel(lat: number, lon: number, zoom: number): Promise<string | null> {
+  if (zoom < 4) return null;
+
+  // Nominatim's own zoom: 3 is country, 5 state, 10 city, 14 suburb.
+  const detail = zoom <= 5 ? 3 : zoom <= 8 ? 5 : zoom <= 13 ? 10 : 14;
+  // Rounded so nearby views share an answer. About 11km at the city
+  // level and coarser beyond it, which is finer than the name changes.
+  const decimals = detail >= 10 ? 1 : 0;
+  const key = `${lat.toFixed(decimals)},${lon.toFixed(decimals)},${detail}`;
+
+  const cached = placeCache.get(key);
+  if (cached !== undefined) return cached;
+
+  try {
+    return await schedule(async () => {
+      const raced = placeCache.get(key);
+      if (raced !== undefined) return raced;
+
+      const url = new URL(NOMINATIM_REVERSE);
+      url.searchParams.set("lat", lat.toFixed(4));
+      url.searchParams.set("lon", lon.toFixed(4));
+      url.searchParams.set("zoom", String(detail));
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("accept-language", "en");
+
+      const response = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(6_000),
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`Reverse geocoder responded ${response.status}`);
+
+      const payload = (await response.json()) as { address?: Record<string, string | undefined> };
+      const address = payload.address ?? {};
+
+      const locality =
+        address.city ?? address.town ?? address.village ?? address.municipality ?? address.suburb ?? address.county;
+      const region = address.state ?? address.province ?? address.region;
+      const country = address.country;
+
+      let label: string | null;
+      if (detail <= 3) label = country ?? null;
+      else if (detail <= 5) label = [region, country].filter(Boolean).join(", ") || null;
+      else label = [locality, region ?? country].filter(Boolean).join(", ") || country || null;
+
+      if (placeCache.size > 5_000) placeCache.clear();
+      placeCache.set(key, label);
+      return label;
+    });
+  } catch {
+    // Not cached: a timeout says nothing about the place.
+    return null;
+  }
+}
+
 export interface RoutePath {
   path: LatLon[];
   distanceMeters: number;

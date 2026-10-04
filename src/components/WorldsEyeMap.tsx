@@ -7,7 +7,9 @@ import "leaflet/dist/leaflet.css";
 import { thumbSize } from "@/lib/cams/spatial";
 import { thumbUrl, versionFor } from "@/lib/cams/display";
 import type { PublicCam } from "@/lib/cams/types";
+import { DEFAULT_VIEW, parseCamId, parseView, type ShareView } from "@/lib/share/view";
 import { CamDetail } from "./CamDetail";
+import { ShareDialog } from "./ShareDialog";
 import { LayersControl, type Facet, type LayersState } from "./LayersControl";
 import { MulticamDashboard, loadStoredDashboard, storeDashboard } from "./MulticamDashboard";
 import { useDashboards } from "@/lib/useDashboards";
@@ -37,6 +39,8 @@ export interface CamsResponse {
   facets: { categories: Facet[]; providers: Facet[] };
   sources: { key: string; label: string; count: number; fetchedAt: number; error: string | null }[];
 }
+
+const NO_CAMS: PublicCam[] = [];
 
 /** Camera frames are 4:3-ish almost everywhere, so the tile matches. */
 const THUMB_ASPECT = 0.72;
@@ -84,7 +88,7 @@ function iconFor(cam: PublicCam, zoom: number, version: number, selected: boolea
  * one listener on the map container catches every failed frame and
  * quietly removes it rather than leaving a broken-image glyph.
  */
-function FrameErrorHandler() {
+function FrameErrorHandler({ onFrameError }: { onFrameError: () => void }) {
   const map = useMap();
 
   useEffect(() => {
@@ -94,11 +98,12 @@ function FrameErrorHandler() {
       if (!(target instanceof HTMLImageElement)) return;
       const holder = target.closest(".wev-thumb-icon");
       if (holder instanceof HTMLElement) holder.style.display = "none";
+      onFrameError();
     };
 
     container.addEventListener("error", onError, true);
     return () => container.removeEventListener("error", onError, true);
-  }, [map]);
+  }, [map, onFrameError]);
 
   return null;
 }
@@ -109,16 +114,41 @@ interface ViewportState {
   north: number;
   east: number;
   zoom: number;
+  /** Centre of the view, which is what a shared link records. */
+  lat: number;
+  lon: number;
+  /** How many cameras this size of map has room for. */
+  limit: number;
+}
+
+/**
+ * Cameras to ask for, from the size of the map on screen.
+ *
+ * A fixed number suits one screen size. The old 140 filled a laptop and
+ * left a large monitor looking sparse, since the same 140 thumbnails were
+ * spread over three times the area. One camera per 7,000 square pixels
+ * gives the same density everywhere, about half of the grid's cells, so
+ * there is always map visible between thumbnails. The ceiling keeps a
+ * very large window from asking for more frames than is polite.
+ */
+function cameraBudget(map: L.Map): number {
+  const size = map.getSize();
+  return Math.min(260, Math.max(60, Math.round((size.x * size.y) / 7000)));
 }
 
 function readViewport(map: L.Map): ViewportState {
   const bounds = map.getBounds();
+  // Wrapped, because panning round the world keeps counting past 180.
+  const centre = map.getCenter().wrap();
   return {
     south: bounds.getSouth(),
     west: bounds.getWest(),
     north: bounds.getNorth(),
     east: bounds.getEast(),
     zoom: map.getZoom(),
+    lat: centre.lat,
+    lon: centre.lng,
+    limit: cameraBudget(map),
   };
 }
 
@@ -211,39 +241,106 @@ function ViewportWatcher({ onChange }: { onChange: (viewport: ViewportState) => 
  * Router: this fires on every pan, and routing it would mean a server
  * round-trip per map movement for a page that doesn't depend on the URL.
  */
-function UrlSync() {
+function UrlSync({ camId }: { camId: string | null }) {
   const map = useMap();
 
   const sync = useCallback(() => {
-    const center = map.getCenter();
+    // Wrapped for the same reason as readViewport: a link saying
+    // lon=-442 is the same place as lon=-82 and reads as a bug.
+    const center = map.getCenter().wrap();
     const params = new URLSearchParams(window.location.search);
     params.set("lat", center.lat.toFixed(4));
     params.set("lon", center.lng.toFixed(4));
     params.set("zoom", String(map.getZoom()));
+    // The open camera rides along, so the address bar is always a link
+    // to exactly what is on screen.
+    if (camId) params.set("cam", camId);
+    else params.delete("cam");
     window.history.replaceState(null, "", `${window.location.pathname}?${params}`);
-  }, [map]);
+  }, [map, camId]);
 
   useMapEvents({ moveend: sync, zoomend: sync });
+
+  // Opening or closing a camera changes the link without the map moving.
+  // Skipped on mount: a first visit to the bare address should stay bare
+  // until the visitor actually does something.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    sync();
+  }, [sync]);
+
   return null;
 }
 
-/** Opens over the Atlantic, showing both North America and Europe. */
-const DEFAULT_VIEW: { center: [number, number]; zoom: number } = { center: [40, -50], zoom: 3 };
-
 /** Reads ?lat=&lon=&zoom=. Safe at render time — this only loads with `ssr: false`. */
 function initialView(): { center: [number, number]; zoom: number } {
-  if (typeof window === "undefined") return DEFAULT_VIEW;
+  const fallback = { center: [DEFAULT_VIEW.lat, DEFAULT_VIEW.lon] as [number, number], zoom: DEFAULT_VIEW.zoom };
+  if (typeof window === "undefined") return fallback;
 
   const params = new URLSearchParams(window.location.search);
-  const lat = Number(params.get("lat"));
-  const lon = Number(params.get("lon"));
-  const zoom = Number(params.get("zoom"));
+  const view = parseView((key) => params.get(key));
+  return view ? { center: [view.lat, view.lon], zoom: view.zoom } : fallback;
+}
 
-  const hasCenter = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
-  return {
-    center: hasCenter ? [lat, lon] : DEFAULT_VIEW.center,
-    zoom: Number.isFinite(zoom) && zoom >= 2 && zoom <= 17 ? zoom : DEFAULT_VIEW.zoom,
-  };
+/** The camera a shared link asks to open, if it names one. */
+function initialCamId(): string | null {
+  if (typeof window === "undefined") return null;
+  return parseCamId(new URLSearchParams(window.location.search).get("cam"));
+}
+
+/**
+ * Which frame of each camera is on screen.
+ *
+ * A camera's frame address changes every couple of minutes so the browser
+ * fetches a new picture. Swapping the address in directly meant Leaflet
+ * replaced the thumbnail with an empty one that filled in when the frame
+ * arrived, so somewhere on the map a tile was always blinking. Here the
+ * new frame is fetched off screen first and the thumbnail changes only
+ * once it has it, straight from one picture to the next.
+ *
+ * A frame that fails to load is switched to as well. The thumbnail's own
+ * error handling then hides it, which is the right outcome for a camera
+ * that has just gone down.
+ */
+function useSettledVersions(cams: PublicCam[], nowSeconds: number): (id: string) => number {
+  const [settled, setSettled] = useState<Map<string, number>>(() => new Map());
+  const pending = useRef(new Set<string>());
+
+  useEffect(() => {
+    for (const cam of cams) {
+      const target = versionFor(cam.id, nowSeconds);
+      if (settled.get(cam.id) === target) continue;
+
+      const key = `${cam.id}|${target}`;
+      if (pending.current.has(key)) continue;
+      pending.current.add(key);
+
+      const done = () => {
+        pending.current.delete(key);
+        setSettled((current) => {
+          // Rebuilt from scratch once it has grown well past what one
+          // view holds, so a long session does not keep an entry for
+          // every camera it ever passed over.
+          const next = current.size > 3000 ? new Map<string, number>() : new Map(current);
+          next.set(cam.id, target);
+          return next;
+        });
+      };
+
+      const probe = new Image();
+      probe.onload = done;
+      probe.onerror = done;
+      probe.src = thumbUrl(cam.id, target);
+    }
+  }, [cams, nowSeconds, settled]);
+
+  // A camera not seen before has nothing to hold on to, so it shows the
+  // current frame directly; its probe above is the same request.
+  return (id) => settled.get(id) ?? versionFor(id, nowSeconds);
 }
 
 export function WorldsEyeMap() {
@@ -255,6 +352,11 @@ export function WorldsEyeMap() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [selected, setSelected] = useState<PublicCam | null>(null);
+  // The camera named by a shared link, until its details arrive. Held
+  // separately so the address keeps naming it in the meantime.
+  const [linkedCamId, setLinkedCamId] = useState<string | null>(initialCamId);
+  const [sharing, setSharing] = useState<PublicCam | "view" | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [layers, setLayers] = useState<LayersState>({ categories: null, providers: null });
   const [nowSeconds, setNowSeconds] = useState(() => Math.floor(Date.now() / 1000));
 
@@ -308,6 +410,64 @@ export function WorldsEyeMap() {
     };
   }, [mapLayers.weather]);
 
+  // A shared link can name a camera that did not win a thumbnail at this
+  // zoom, so it is fetched by id rather than looked for in the viewport.
+  useEffect(() => {
+    if (!linkedCamId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/cams/lookup?id=${encodeURIComponent(linkedCamId)}`);
+        if (!response.ok) throw new Error(String(response.status));
+        const payload = (await response.json()) as { cam: PublicCam };
+        if (!cancelled) setSelected(payload.cam);
+      } catch {
+        // A camera that has left its feed: the link still opens the map
+        // where it was, just without a panel.
+      } finally {
+        if (!cancelled) setLinkedCamId(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedCamId]);
+
+  /**
+   * Asks for the viewport again shortly after a thumbnail fails.
+   *
+   * A failed frame is hidden, which leaves a gap. By then the server has
+   * recorded the failure and will give that slot to a working neighbour,
+   * but only if asked, and nothing asked until the next pan. Failures
+   * arrive in clusters, so they are gathered for a moment into a single
+   * request, and capped per view so a region full of dead cameras cannot
+   * turn into a polling loop.
+   */
+  const retriesLeft = useRef(2);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onFrameError = useCallback(() => {
+    if (retryTimer.current || retriesLeft.current <= 0) return;
+    retryTimer.current = setTimeout(() => {
+      retryTimer.current = null;
+      retriesLeft.current--;
+      setRetryNonce((current) => current + 1);
+    }, 2500);
+  }, []);
+
+  const onViewportChange = useCallback((next: ViewportState) => {
+    retriesLeft.current = 2;
+    setViewport(next);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current);
+    },
+    []
+  );
+
   // Guards against a slow response for an old viewport landing after a
   // fast one for the current viewport and overwriting it.
   const requestSeq = useRef(0);
@@ -331,7 +491,12 @@ export function WorldsEyeMap() {
         north: viewport.north.toFixed(5),
         east: viewport.east.toFixed(5),
         zoom: String(viewport.zoom),
+        limit: String(viewport.limit),
       });
+      // Only present on a retry after failed frames. Without it the
+      // browser would answer from its own minute-long cache of this
+      // exact request and the gaps would stay.
+      if (retryNonce > 0) params.set("r", String(retryNonce));
       // Sent only when a filter is active — an absent parameter means
       // "everything", which keeps the common request cacheable.
       if (categoryParam !== null) params.set("categories", categoryParam);
@@ -357,7 +522,7 @@ export function WorldsEyeMap() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [viewport, categoryParam, providerParam]);
+  }, [viewport, categoryParam, providerParam, retryNonce]);
 
   // Drives the staggered thumbnail refresh. A 15s tick is fine-grained
   // enough that cameras come due steadily rather than in visible waves.
@@ -366,8 +531,20 @@ export function WorldsEyeMap() {
     return () => clearInterval(timer);
   }, []);
 
-  const cams = data?.cams ?? [];
+  // One stable empty list, so the effects that watch `cams` do not see a
+  // new array on every render before the first response.
+  const cams = data?.cams ?? NO_CAMS;
   const zoom = viewport?.zoom ?? initialZoom;
+  const shownVersion = useSettledVersions(cams, nowSeconds);
+
+  const shareView: ShareView | null = viewport
+    ? {
+        lat: viewport.lat,
+        lon: viewport.lon,
+        zoom: viewport.zoom,
+        cam: sharing && sharing !== "view" ? sharing.id : null,
+      }
+    : null;
 
   return (
     <div className="relative h-full w-full">
@@ -420,9 +597,9 @@ export function WorldsEyeMap() {
         {mapLayers.roads && <TileLayer pane={REFERENCE_PANE} url={OVERLAY_TILES.roads} maxZoom={17} />}
         {mapLayers.places && <TileLayer pane={REFERENCE_PANE} url={OVERLAY_TILES.places} maxZoom={17} />}
 
-        <ViewportWatcher onChange={setViewport} />
-        <UrlSync />
-        <FrameErrorHandler />
+        <ViewportWatcher onChange={onViewportChange} />
+        <UrlSync camId={selected?.id ?? linkedCamId} />
+        <FrameErrorHandler onFrameError={onFrameError} />
         <RouteFitter result={routeResult} />
 
         {routeResult && (
@@ -444,7 +621,7 @@ export function WorldsEyeMap() {
           <Marker
             key={cam.id}
             position={[cam.lat, cam.lon]}
-            icon={iconFor(cam, zoom, versionFor(cam.id, nowSeconds), selected?.id === cam.id, wallIds.has(cam.id))}
+            icon={iconFor(cam, zoom, shownVersion(cam.id), selected?.id === cam.id, wallIds.has(cam.id))}
             eventHandlers={{ click: () => setSelected(cam) }}
             zIndexOffset={Math.round(cam.prominence * 100)}
           />
@@ -487,6 +664,22 @@ export function WorldsEyeMap() {
               onMapLayersChange={setMapLayers}
             />
           )}
+
+          <button
+            type="button"
+            onClick={() => setSharing("view")}
+            disabled={!viewport}
+            aria-label="Share this view"
+            title="Share this view"
+            className="flex items-center gap-1.5 rounded-lg border border-wev-border bg-wev-panel/95 px-2 py-1.5 text-[11px] font-medium text-wev-text shadow-lg backdrop-blur-sm transition-colors hover:bg-wev-panel-2 sm:gap-2 sm:px-2.5 sm:py-2 sm:text-xs"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-wev-accent sm:h-4 sm:w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 15V3M8 7l4-4 4 4" />
+              <path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7" />
+            </svg>
+            {/* The word is dropped on a phone, where this row has no width to spare. */}
+            <span className="hidden sm:inline">Share</span>
+          </button>
         </div>
       </div>
 
@@ -533,7 +726,21 @@ export function WorldsEyeMap() {
             )
           }
           onOpenWall={() => setWallOpen(true)}
+          onShare={() => setSharing(selected)}
           onClose={() => setSelected(null)}
+        />
+      )}
+
+      {sharing && shareView && (
+        <ShareDialog
+          view={shareView}
+          heading={sharing === "view" ? "Share this view" : `Share ${sharing.title}`}
+          text={
+            sharing === "view"
+              ? "Live webcams on a satellite map, on World's Eye View"
+              : `${sharing.title}, live on World's Eye View`
+          }
+          onClose={() => setSharing(null)}
         />
       )}
 

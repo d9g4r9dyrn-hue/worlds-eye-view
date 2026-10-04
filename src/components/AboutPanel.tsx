@@ -13,7 +13,7 @@ import { useEffect } from "react";
 const SOURCES: { name: string; detail: string; href: string }[] = [
   {
     name: "State & provincial 511 services",
-    detail: "Florida, Georgia, Utah, North Carolina, New York, Pennsylvania, Nevada, Arizona, Idaho, Wisconsin, Connecticut, Louisiana, Alaska, New England, and Ontario, Alberta, Manitoba, Yukon, New Brunswick, Nova Scotia, Newfoundland & Labrador and PEI",
+    detail: "Thirty-odd US states, from Florida, Georgia and New York to Washington, Oregon, Colorado, Minnesota, Ohio, Illinois and Michigan, and most Canadian provinces and territories",
     href: "https://fl511.com",
   },
   { name: "Caltrans", detail: "California highway CCTV", href: "https://cwwp2.dot.ca.gov/vm/iframemap.htm" },
@@ -25,6 +25,28 @@ const SOURCES: { name: string; detail: string; href: string }[] = [
     href: "https://www.journeys.nzta.govt.nz/traffic-cameras",
   },
   { name: "LTA Singapore", detail: "Expressway cameras, via data.gov.sg", href: "https://data.gov.sg" },
+  {
+    name: "Hong Kong Transport Department",
+    detail: "Traffic snapshots across the territory, via data.gov.hk",
+    href: "https://data.gov.hk/en-data/dataset/hk-td-tis_2-traffic-snapshot-images",
+  },
+  { name: "DGT", detail: "Road cameras across Spain", href: "https://infocar.dgt.es/etraffic/" },
+  { name: "Vegagerðin", detail: "Road cameras around Iceland", href: "https://umferdin.is/en" },
+  {
+    name: "Transport for NSW and Queensland TMR",
+    detail: "Road cameras in New South Wales and Queensland",
+    href: "https://www.livetraffic.com/traffic-cameras",
+  },
+  {
+    name: "NOAA National Data Buoy Center",
+    detail: "Cameras on open-ocean weather buoys",
+    href: "https://www.ndbc.noaa.gov/buoycams.shtml",
+  },
+  {
+    name: "Windy Webcams",
+    detail: "Harbours, mountains, cities and coasts worldwide",
+    href: "https://www.windy.com/webcams",
+  },
   { name: "Transport for London", detail: "JamCams across Greater London", href: "https://www.tfl.gov.uk/traffic/status" },
   {
     name: "USGS Alaska Volcano Observatory",
