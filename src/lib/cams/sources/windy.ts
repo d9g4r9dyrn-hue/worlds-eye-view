@@ -143,6 +143,27 @@ const REGIONAL_ANCHORS: { label: string; lat: number; lon: number; radiusKm: num
   { label: "US Hawaii", lat: 20.7, lon: -156.3, radiusKm: 250, target: 60 },
 ];
 
+/**
+ * Areas read before anything else, one category at a time.
+ *
+ * The request budget runs out partway through the country passes, so the
+ * regional anchors above are reached late or not at all, and an area that
+ * matters can end up with nothing. An area listed here is read straight
+ * after the global pass, while there is budget for certain.
+ *
+ * It is read per category, and road cameras are left out, for a reason
+ * specific to how Windy is built: its "traffic" cameras in the United
+ * States are the state DOT's own cameras relayed, which this map already
+ * has from the DOT directly. Around Tampa Bay, 70 of the 76 Windy cameras
+ * within 15km of Clearwater were those. What Windy adds there is the
+ * handful that are not: the beach hotels, the bayfront, the stadium.
+ * Windy treats a comma-separated category list as "all of these", so each
+ * category is its own request; these return a few cameras each.
+ */
+const PRIORITY_AREAS: { label: string; lat: number; lon: number; radiusKm: number; categories: string[] }[] = [
+  { label: "Tampa Bay", lat: 27.95, lon: -82.6, radiusKm: 45, categories: ["beach", "coast", "city", "meteo"] },
+];
+
 /** How long a minted image URL is treated as usable. Windy's free tier expires them at 10 minutes. */
 export const WINDY_URL_TTL_SECONDS = 480;
 
@@ -432,7 +453,12 @@ export const windySource: CamSource = {
      * Pages one filtered query until it has `target` cameras, the query
      * runs dry, or the shared request budget is gone.
      */
-    async function collect(label: string, filter: Record<string, string>, target: number) {
+    async function collect(
+      label: string,
+      filter: Record<string, string>,
+      target: number,
+      keep: (webcam: WindyWebcam) => boolean = () => true
+    ) {
       const before = cams.size;
       for (let offset = 0; offset < Math.min(MAX_OFFSET, target); offset += PAGE_SIZE) {
         if (requests >= MAX_REQUESTS) return;
@@ -450,6 +476,7 @@ export const windySource: CamSource = {
         }
 
         for (const webcam of batch) {
+          if (!keep(webcam)) continue;
           const cam = toCam(webcam);
           if (!cam || cams.has(cam.id)) continue;
           if (misplaced(cam)) {
@@ -468,6 +495,20 @@ export const windySource: CamSource = {
     // want to look at, and they should not lose their slot to the long
     // tail just because the tail is more evenly spread.
     await collect("global", {}, GLOBAL_TARGET);
+
+    const notARoadCamera = (webcam: WindyWebcam) =>
+      !(webcam.categories ?? []).some((category) => category.id?.toLowerCase() === "traffic");
+    for (const area of PRIORITY_AREAS) {
+      const radius = Math.min(area.radiusKm, MAX_NEARBY_RADIUS_KM);
+      for (const category of area.categories) {
+        await collect(
+          `${area.label} ${category}`,
+          { nearby: `${area.lat},${area.lon},${radius}`, categories: category },
+          PAGE_SIZE,
+          notARoadCamera
+        );
+      }
+    }
 
     // Cheapest countries first. If the budget runs out — and it does —
     // this decides what gets lost: depth in the countries that have

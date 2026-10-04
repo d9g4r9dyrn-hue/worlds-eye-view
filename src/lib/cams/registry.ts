@@ -22,6 +22,8 @@ import { ndDotSource } from "./sources/nddot";
 import { vegagerdinSource } from "./sources/vegagerdin";
 import { qldTrafficSource } from "./sources/qldtraffic";
 import { ndbcSource } from "./sources/ndbc";
+import { weatherStemSource } from "./sources/weatherstem";
+import { iTrafficSource } from "./sources/itraffic";
 import { curatedSource, PROMOTIONS } from "./sources/curated";
 
 /**
@@ -84,6 +86,12 @@ const SOURCES: RegisteredSource[] = [
   { source: vegagerdinSource, ttlMs: 6 * HOUR },
   { source: qldTrafficSource, ttlMs: 6 * HOUR },
   { source: ndbcSource, ttlMs: 1 * HOUR },
+  // Both of these cost a request per camera to read, WeatherSTEM because
+  // coordinates are only on each station's own page and i-traffic because
+  // most of its listed cameras are dead and have to be checked. Their
+  // rosters change slowly, so they are read rarely.
+  { source: weatherStemSource, ttlMs: 24 * HOUR },
+  { source: iTrafficSource, ttlMs: 12 * HOUR },
   // Singapore republishes every frame under a fresh UUID, so a stale
   // roster points at frames that no longer exist — same failure mode as
   // AVO, and the same short TTL.

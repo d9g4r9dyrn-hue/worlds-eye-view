@@ -25,6 +25,8 @@ Around **44,000 cameras** from feeds that are public and need no key, plus about
 | Hong Kong Transport Department | 1,010 | Hong Kong |
 | Transport for NSW, QLDTraffic | 380 | New South Wales and Queensland |
 | Vegagerðin | 165 | Iceland |
+| SANRAL i-traffic | about 500 | South Africa; only cameras showing a real picture are kept |
+| WeatherSTEM | about 100 | Florida sky cameras on schools, fire stations and county buildings |
 | NOAA buoy cameras | 77 | Open ocean; hidden while their frame is black at night |
 | Caltrans CCTV | 3,400 | California highways |
 | DriveBC | 1,030 | British Columbia — runs its own software, not the 511 platform |

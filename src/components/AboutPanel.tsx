@@ -37,6 +37,12 @@ const SOURCES: { name: string; detail: string; href: string }[] = [
     detail: "Road cameras in New South Wales and Queensland",
     href: "https://www.livetraffic.com/traffic-cameras",
   },
+  { name: "SANRAL i-traffic", detail: "Freeway cameras in South Africa", href: "https://www.i-traffic.co.za/" },
+  {
+    name: "WeatherSTEM",
+    detail: "Sky cameras on schools, fire stations and county buildings across Florida",
+    href: "https://www.weatherstem.com/",
+  },
   {
     name: "NOAA National Data Buoy Center",
     detail: "Cameras on open-ocean weather buoys",

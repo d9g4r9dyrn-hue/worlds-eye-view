@@ -37,6 +37,8 @@ import { ndDotSource } from "../src/lib/cams/sources/nddot";
 import { vegagerdinSource } from "../src/lib/cams/sources/vegagerdin";
 import { qldTrafficSource } from "../src/lib/cams/sources/qldtraffic";
 import { ndbcSource } from "../src/lib/cams/sources/ndbc";
+import { weatherStemSource } from "../src/lib/cams/sources/weatherstem";
+import { iTrafficSource } from "../src/lib/cams/sources/itraffic";
 import { curatedSource, PROMOTIONS } from "../src/lib/cams/sources/curated";
 import type { Cam, CamSource } from "../src/lib/cams/types";
 
@@ -51,6 +53,8 @@ const SOURCES: CamSource[] = [
   driveBcSource,
   hongKongSource,
   singaporeSource,
+  weatherStemSource,
+  iTrafficSource,
   carsProgramSource,
   dgtSource,
   wsdotSource,
