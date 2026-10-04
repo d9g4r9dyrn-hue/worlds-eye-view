@@ -18,6 +18,10 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === "edge") return;
 
+  // Before the first fetch, so the warm-up below already benefits.
+  const { installExtraCaCertificates } = await import("./lib/extraCa");
+  installExtraCaCertificates();
+
   const { getCatalog } = await import("./lib/cams/registry");
 
   const startedAt = Date.now();

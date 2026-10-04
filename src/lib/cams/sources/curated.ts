@@ -1,4 +1,5 @@
 import type { Cam, CamCategory, CamSource } from "../types";
+import { solarPosition } from "../../sun";
 
 /**
  * The hand-curated layer.
@@ -129,7 +130,41 @@ function phenocam(site: string): { stillUrl: string; sourcePage: string } {
  * the southern winter, Svalbard and Barrow in the northern one. A black
  * frame there is the polar night, not a fault.
  */
+/**
+ * Indian Astronomical Observatory, Hanle. The site publishes a daytime
+ * camera and an all-sky camera, and rewrites both files every minute
+ * whether or not they have changed: at local midnight the "day" picture
+ * is still that afternoon's, under a Last-Modified a minute old. Showing
+ * a sunlit dome at midnight would be the one thing this map must not do,
+ * so the picture follows the sun: the dome camera while the sun is up,
+ * the all-sky camera once it is down.
+ */
+async function hanleStill(cam: Cam): Promise<string> {
+  const up = solarPosition(cam.lat, cam.lon, new Date()).altitudeDeg > -2;
+  return `https://www.iiap.res.in/media/images/${up ? "day" : "allsky"}.original.jpg`;
+}
+
 const STANDALONE_CAMS: Cam[] = [
+  // Indian Institute of Astrophysics. Checked 2026-10-04: frame stamped
+  // 13:35 IST the same day. The only first-party camera found anywhere in
+  // India, at 4,500 m in Ladakh. Its server's certificate chain needs the
+  // intermediates in assets/certs; see src/lib/extraCa.ts.
+  {
+    id: "curated:iia-hanle",
+    title: "Indian Astronomical Observatory, Hanle",
+    place: "Hanle, Ladakh",
+    country: "India",
+    lat: 32.7794,
+    lon: 78.9642,
+    category: "observatory",
+    prominence: 8,
+    stillUrl: "https://www.iiap.res.in/media/images/day.original.jpg",
+    resolveStillUrl: hanleStill,
+    refreshSeconds: 600,
+    sourcePage: "https://www.iiap.res.in/centers/iao/mets/",
+    provider: "Indian Institute of Astrophysics",
+  },
+
   // --- Antarctica ---
 
   // Australian Antarctic Division. Checked 2026-10-04: four station pages each
