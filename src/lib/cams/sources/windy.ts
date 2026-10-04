@@ -67,7 +67,13 @@ const MAX_OFFSET = 1_050;
  * fan-out returns roughly 7,000 cameras and is still budget-limited, so
  * there is more to be had.
  */
-const MAX_REQUESTS = Number(process.env.WINDY_MAX_REQUESTS) || 200;
+// Raised from 200 on 2026-10-04. The full fan-out was measured at 173
+// requests before about seventy single-request countries and seventeen
+// Asian anchors were added, so it now needs around 265; the rest is
+// headroom. The limit Windy enforces turned out to be a rate, seen as
+// 429s on bursts of per-view lookups, and this roster runs one request
+// at a time once a day, which is the gentlest traffic this key sends.
+const MAX_REQUESTS = Number(process.env.WINDY_MAX_REQUESTS) || 340;
 
 /** Cameras to take from the unfiltered, view-count-ordered listing. */
 const GLOBAL_TARGET = 250;
@@ -102,6 +108,27 @@ const COUNTRY_TARGETS: Record<string, number> = {
   PH: 60, IN: 100, NP: 60, LK: 60,
   // Oceania
   AU: 250, NZ: 200, FJ: 60,
+
+  // Added 2026-10-04 after counting what Windy holds in every country the
+  // map was blank over. The count was the finding: India has 8 cameras,
+  // Saudi Arabia 1, Kazakhstan 14, and most of Africa none at all, so
+  // those blanks are a gap in what the world publishes and not in what
+  // this asks for. Every country below has at least one camera and most
+  // have fewer than fifty, which makes them one request each. Russia was
+  // the real omission, with 505.
+  RU: 300,
+  // Africa
+  TN: 50, SO: 50, UG: 50, ZM: 50, MZ: 50, ZW: 50, BW: 50, LS: 50, MU: 50, SC: 50, CV: 50,
+  // Middle East, Caucasus, Central and South Asia
+  SA: 50, LB: 50, CY: 50, GE: 50, AZ: 50, KZ: 50, UZ: 50, KG: 50, MV: 50, SG: 50,
+  // Pacific
+  PG: 50, VU: 50,
+  // Americas
+  EC: 50, UY: 50, PY: 50, VE: 50, PA: 50, NI: 50, HN: 50, GT: 50, BZ: 50, DO: 50, JM: 50, BS: 50,
+  TT: 50, GL: 50,
+  // Europe
+  BY: 50, MD: 50, ME: 50, MK: 50, AL: 50, XK: 50, LT: 50, LV: 50, EE: 50, LU: 50, MT: 50, FO: 60,
+  RS: 60, BA: 100, BG: 100, SI: 150, SK: 150, HU: 150,
 };
 
 /**
@@ -141,6 +168,28 @@ const REGIONAL_ANCHORS: { label: string; lat: number; lon: number; radiusKm: num
   { label: "US Gulf Coast", lat: 30.0, lon: -92.0, radiusKm: 250, target: 80 },
   { label: "US Alaska", lat: 61.2, lon: -149.9, radiusKm: 250, target: 80 },
   { label: "US Hawaii", lat: 20.7, lon: -156.3, radiusKm: 250, target: 60 },
+
+  // Russia and inner Asia. `countries=RU` is ordered by view count like
+  // everything else, so on its own it returns Moscow, St Petersburg and
+  // Sochi and leaves eleven time zones empty. These are the places with
+  // anything to find east of the Urals, plus the far north.
+  { label: "RU Murmansk", lat: 68.97, lon: 33.07, radiusKm: 250, target: 50 },
+  { label: "RU Urals", lat: 56.84, lon: 60.6, radiusKm: 250, target: 50 },
+  { label: "RU Novosibirsk", lat: 55.0, lon: 82.9, radiusKm: 250, target: 50 },
+  { label: "RU Krasnoyarsk", lat: 56.0, lon: 92.9, radiusKm: 250, target: 50 },
+  { label: "RU Norilsk", lat: 69.3, lon: 88.2, radiusKm: 250, target: 50 },
+  { label: "RU Baikal", lat: 52.3, lon: 104.3, radiusKm: 250, target: 50 },
+  { label: "RU Yakutsk", lat: 62.0, lon: 129.7, radiusKm: 250, target: 50 },
+  { label: "RU Khabarovsk", lat: 48.5, lon: 135.1, radiusKm: 250, target: 50 },
+  { label: "RU Vladivostok", lat: 43.1, lon: 131.9, radiusKm: 250, target: 50 },
+  { label: "RU Magadan", lat: 59.6, lon: 150.8, radiusKm: 250, target: 50 },
+  { label: "RU Kamchatka", lat: 53.0, lon: 158.7, radiusKm: 250, target: 50 },
+  { label: "KZ Almaty", lat: 43.2, lon: 76.9, radiusKm: 250, target: 50 },
+  { label: "CN Urumqi", lat: 43.8, lon: 87.6, radiusKm: 250, target: 50 },
+  { label: "CN Lhasa", lat: 29.65, lon: 91.1, radiusKm: 250, target: 50 },
+  { label: "CN Chengdu", lat: 30.6, lon: 104.1, radiusKm: 250, target: 50 },
+  { label: "IN Delhi", lat: 28.6, lon: 77.2, radiusKm: 250, target: 50 },
+  { label: "IN Ladakh", lat: 34.15, lon: 77.58, radiusKm: 250, target: 50 },
 ];
 
 /**
@@ -276,16 +325,91 @@ async function resolveStillUrl(cam: Cam): Promise<string> {
   const key = apiKey();
   if (!key) throw new Error("WINDY_API_KEY is not set");
 
+  const held = minted.get(cam.id);
+  if (held && held.expiresAt > Date.now()) return held.url;
+
+  // The thumbnail and the full-size frame of one camera are asked for
+  // within a moment of each other when someone opens it. They share one
+  // lookup instead of racing two.
+  const pending = minting.get(cam.id);
+  if (pending) return pending;
+
+  const lookup = withMintSlot(() => mint(cam, key)).finally(() => minting.delete(cam.id));
+  minting.set(cam.id, lookup);
+  return lookup;
+}
+
+/**
+ * Per-view lookups, paced.
+ *
+ * Windy throttles by rate: a map view over Europe asks for a hundred
+ * image addresses at once, and past some burst size the API answers 429.
+ * Measured on the live server, those refusals were the single largest
+ * cause of failed frames, more than every dead camera combined. They
+ * were also behind the oddest symptom on the site, a camera whose
+ * thumbnail was showing while its panel said it was not responding: the
+ * thumbnail's lookup had got through and the panel's separate lookup for
+ * the same camera a second later had not.
+ *
+ * Three things, then. An address is kept for most of the ten minutes it
+ * stays valid, so one camera costs one lookup however many sizes are
+ * asked for. Lookups go through a small number of slots, so a burst
+ * becomes a queue. And a 429 is waited out and tried again inside its
+ * slot, which also slows everything queued behind it, the response a
+ * throttle is asking for.
+ */
+const MAX_CONCURRENT_MINTS = 5;
+const MINT_ATTEMPTS = 3;
+
+/** Shorter than Windy's ten minutes, so an address is never handed out with seconds left on it. */
+const MINTED_TTL_MS = 7 * 60_000;
+
+const globalForWindy = globalThis as typeof globalThis & {
+  __wevWindyMinted?: Map<string, { url: string; expiresAt: number }>;
+  __wevWindyMinting?: Map<string, Promise<string>>;
+  __wevWindyGate?: { active: number; waiting: (() => void)[] };
+};
+
+const minted = (globalForWindy.__wevWindyMinted ??= new Map());
+const minting = (globalForWindy.__wevWindyMinting ??= new Map());
+const gate = (globalForWindy.__wevWindyGate ??= { active: 0, waiting: [] });
+
+async function withMintSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (gate.active >= MAX_CONCURRENT_MINTS) {
+    await new Promise<void>((resolve) => gate.waiting.push(resolve));
+  } else {
+    gate.active++;
+  }
+  try {
+    return await task();
+  } finally {
+    // The slot passes straight to the next in line, so the count only
+    // drops when nobody is waiting.
+    const next = gate.waiting.shift();
+    if (next) next();
+    else gate.active--;
+  }
+}
+
+async function mint(cam: Cam, key: string): Promise<string> {
   const webcamId = cam.id.slice("windy:".length);
   const url = new URL(`${ENDPOINT}/${encodeURIComponent(webcamId)}`);
   url.searchParams.set("include", "images");
 
-  const response = await windyFetch(url, key);
+  let response = await windyFetch(url, key);
+  for (let attempt = 1; response.status === 429 && attempt < MINT_ATTEMPTS; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+    response = await windyFetch(url, key);
+  }
   if (!response.ok) throw new Error(`Windy webcam ${webcamId} responded ${response.status}`);
 
   const webcam = (await response.json()) as WindyWebcam;
   const image = pickImage(webcam);
   if (!image) throw new Error(`Windy webcam ${webcamId} returned no image`);
+
+  // Bounded for a long-lived process; entries are tiny and expire anyway.
+  if (minted.size > 8000) minted.clear();
+  minted.set(cam.id, { url: image, expiresAt: Date.now() + MINTED_TTL_MS });
   return image;
 }
 
@@ -302,7 +426,13 @@ async function fetchPage(
   url.searchParams.set("include", "images,location,categories,urls");
   for (const [name, value] of Object.entries(filter)) url.searchParams.set(name, value);
 
-  const response = await windyFetch(url, key);
+  let response = await windyFetch(url, key);
+  // A throttled page is waited out. Giving up would abandon the rest of
+  // that country's pass over what is a pause of a second or two.
+  for (let attempt = 1; response.status === 429 && attempt <= 3; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500 * attempt));
+    response = await windyFetch(url, key);
+  }
   if (!response.ok) throw new Error(`Windy responded ${response.status}`);
 
   const payload = (await response.json()) as { webcams?: WindyWebcam[] };

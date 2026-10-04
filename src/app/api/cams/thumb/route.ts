@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCamById } from "@/lib/cams/registry";
-import { browserTtlSeconds, getFrame } from "@/lib/cams/thumbCache";
+import { browserTtlSeconds, getFrame, peekThumbnail } from "@/lib/cams/thumbCache";
 import { checkRateLimit, rateLimitHeaders } from "@/lib/rateLimit";
 
 /**
@@ -52,6 +52,18 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
+    // The full-size frame failed but the thumbnail is in hand: serve
+    // that. It is the same camera a moment earlier, and the panel showing
+    // it small beats the panel claiming the camera is down while its
+    // thumbnail sits on the map behind it. Marked uncacheable so the next
+    // refresh asks for the real thing again.
+    const fallback = wantsFull ? peekThumbnail(cam) : null;
+    if (fallback) {
+      return new NextResponse(new Uint8Array(fallback.body), {
+        headers: { "Content-Type": fallback.contentType, "Cache-Control": "no-store" },
+      });
+    }
+
     // A dead camera is completely normal here — feeds list cameras that
     // are offline, roadworked away or simply broken. The map treats a 502
     // as "drop this tile" and moves on, so this must not be noisy.

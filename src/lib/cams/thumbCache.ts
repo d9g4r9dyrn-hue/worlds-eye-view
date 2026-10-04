@@ -322,6 +322,18 @@ export async function getFrame(cam: Cam, thumbnail = true): Promise<CachedFrame>
   return request;
 }
 
+/**
+ * The thumbnail already held for a camera, if there is one, without
+ * fetching anything.
+ *
+ * For the detail panel when its full-size frame cannot be had. A small
+ * picture of the camera is a far better answer than "not responding"
+ * about a camera whose thumbnail the visitor has just clicked on.
+ */
+export function peekThumbnail(cam: Cam): CachedFrame | null {
+  return readCache(`${cam.id}|t`);
+}
+
 /** How long a client may reuse a frame — mirrors the server-side TTL. */
 export function browserTtlSeconds(cam: Cam): number {
   return Math.max(MIN_TTL_SECONDS, cam.refreshSeconds);
