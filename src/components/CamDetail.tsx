@@ -110,8 +110,15 @@ export function CamDetail({
 
   return (
     <>
-    <div className="absolute inset-x-0 bottom-0 z-[1200] p-3 sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[26rem] sm:p-4">
-      <div className="flex max-h-full flex-col overflow-hidden rounded-xl border border-wev-border bg-wev-panel/97 shadow-2xl backdrop-blur-md">
+    {/* Two things here keep the map usable while a camera is open. On
+        desktop the panel starts below the row of map controls (sm:top-11)
+        where it used to cover them, which left Find cameras, Layers and
+        Share on screen but dead. And this wrapper ignores the pointer:
+        it spans the whole right-hand column, most of which is empty
+        padding, and that padding was swallowing clicks and drags meant
+        for the map underneath. Only the card itself takes input. */}
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1200] p-3 sm:inset-y-0 sm:top-11 sm:left-auto sm:right-0 sm:w-[26rem] sm:p-4">
+      <div className="pointer-events-auto flex max-h-full flex-col overflow-hidden rounded-xl border border-wev-border bg-wev-panel/97 shadow-2xl backdrop-blur-md">
         <div className="flex items-start justify-between gap-3 border-b border-wev-border px-4 py-3">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-wev-text">{cam.title}</h2>

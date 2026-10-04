@@ -628,7 +628,9 @@ export function WorldsEyeMap() {
         ))}
       </MapContainer>
 
-      <div className="absolute inset-x-3 top-3 z-[1100] flex items-start justify-between gap-2">
+      {/* Above the camera panel (1200), so a dropdown opened from this
+          row draws over the panel and not underneath it. */}
+      <div className="pointer-events-none absolute inset-x-3 top-3 z-[1250] flex items-start justify-between gap-2">
         <StatusBar
           loading={loading}
           failed={failed}
@@ -640,7 +642,7 @@ export function WorldsEyeMap() {
         {/* shrink-0: the controls keep their size and the status line
             gives up width instead, since a truncated count is readable
             and a squashed button is not. */}
-        <div className="flex shrink-0 items-start gap-1.5">
+        <div className="pointer-events-auto flex shrink-0 items-start gap-1.5">
           <WallBuilder
             routeResult={routeResult}
             onRouteResult={setRouteResult}
