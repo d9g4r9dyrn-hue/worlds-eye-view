@@ -176,17 +176,33 @@ async function fetchStation(domain: string, handle: string): Promise<Cam[]> {
 async function pooled<T, R>(items: T[], task: (item: T) => Promise<R[]>): Promise<R[]> {
   const results: R[] = [];
   let next = 0;
+  let failed = 0;
+  let lastError = "";
   async function worker() {
     while (next < items.length) {
       const item = items[next++];
-      try {
-        results.push(...(await task(item)));
-      } catch {
-        // One page failing costs one station, not the county.
+      // Tried twice. From the server this source returned a quarter of
+      // what it returns from a desk, and it did so without a word because
+      // failures here were dropped; the second attempt and the count
+      // below are so that neither happens quietly again.
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          results.push(...(await task(item)));
+          break;
+        } catch (error) {
+          if (attempt === 2) {
+            // One page failing costs one station, not the county.
+            failed++;
+            lastError = error instanceof Error ? error.message : String(error);
+          } else {
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+          }
+        }
       }
     }
   }
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
+  if (failed > 0) console.warn(`[cams] WeatherSTEM: ${failed} of ${items.length} station pages failed, last: ${lastError}`);
   return results;
 }
 
@@ -209,6 +225,8 @@ export const weatherStemSource: CamSource = {
       }
     }
 
-    return pooled(stations, ({ domain, handle }) => fetchStation(domain, handle));
+    const cams = await pooled(stations, ({ domain, handle }) => fetchStation(domain, handle));
+    console.log(`[cams] WeatherSTEM: ${stations.length} stations listed, ${cams.length} cameras with a current picture`);
+    return cams;
   },
 };
