@@ -44,6 +44,12 @@ const SOURCES: { name: string; detail: string; href: string }[] = [
     href: "https://www.weatherstem.com/",
   },
   {
+    name: "Research stations and observatories",
+    detail:
+      "Antarctic stations (Australian Antarctic Division, US Antarctic Program, Alfred Wegener Institute, Antarctica New Zealand, NIPR Japan, KOPRI), NOAA Global Monitoring Laboratory, ESO and APEX in Chile, USGS, GeoNet, OVSICORI, OVPF, the PhenoCam network, UNIS and the Norwegian Polar Institute in Svalbard; each camera names its operator",
+    href: "https://gml.noaa.gov/obop/",
+  },
+  {
     name: "NOAA National Data Buoy Center",
     detail: "Cameras on open-ocean weather buoys",
     href: "https://www.ndbc.noaa.gov/buoycams.shtml",
