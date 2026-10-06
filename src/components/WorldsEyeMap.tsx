@@ -126,14 +126,16 @@ interface ViewportState {
  *
  * A fixed number suits one screen size. The old 140 filled a laptop and
  * left a large monitor looking sparse, since the same 140 thumbnails were
- * spread over three times the area. One camera per 7,000 square pixels
- * gives the same density everywhere, about half of the grid's cells, so
- * there is always map visible between thumbnails. The ceiling keeps a
- * very large window from asking for more frames than is polite.
+ * spread over three times the area. One camera per 11,000 square pixels
+ * gives the same density everywhere. It was 7,000 for a day, and at that
+ * the thumbnails covered the map they were supposed to sit on; the owner
+ * put it well: the cameras are the show, but you need to see where they
+ * are. The ceiling keeps a very large window from asking for more frames
+ * than is polite.
  */
 function cameraBudget(map: L.Map): number {
   const size = map.getSize();
-  return Math.min(260, Math.max(60, Math.round((size.x * size.y) / 7000)));
+  return Math.min(200, Math.max(50, Math.round((size.x * size.y) / 11000)));
 }
 
 function readViewport(map: L.Map): ViewportState {

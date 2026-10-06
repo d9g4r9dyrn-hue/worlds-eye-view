@@ -134,7 +134,10 @@ export interface ThinOptions {
  * without overlapping. Assumes `cams` is already filtered to the viewport.
  */
 export function thinForViewport(cams: Cam[], options: ThinOptions): Cam[] {
-  const { zoom, spacing = 1.15, limit = 140 } = options;
+  // 1.45 leaves close to half a thumbnail of map on each side of every
+  // camera. 1.15 packed them edge to edge in a busy region and hid the
+  // geography they were meant to be placed on.
+  const { zoom, spacing = 1.45, limit = 140 } = options;
 
   // One representative size for the grid. Using each camera's own size
   // would make cell membership depend on which camera you asked about,
