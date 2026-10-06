@@ -303,6 +303,27 @@ const STANDALONE_CAMS: Cam[] = [
     provider: "Alfred Wegener Institute",
   },
 
+  // British Antarctic Survey. The latest.php endpoint answers with a redirect
+  // to the newest dated frame, which fetch follows, so no resolver is needed.
+  // Checked 2026-10-05: Halley's frame was stamped 02:30 UTC the same night;
+  // frames arrive every 30 to 60 minutes. Rothera's endpoint redirected to a
+  // file that did not exist and Signy and King Edward Point returned nothing,
+  // so those three are left out.
+  {
+    id: "curated:bas-halley",
+    title: "Halley VI Research Station",
+    place: "Brunt Ice Shelf",
+    country: "Antarctica",
+    lat: -75.5675,
+    lon: -25.5167,
+    category: "weather",
+    prominence: 8,
+    stillUrl: "https://legacy.bas.ac.uk/images/webcams/latest/latest.php?cam=halley",
+    refreshSeconds: 1800,
+    sourcePage: "https://www.bas.ac.uk/data/our-data/images/webcams/halley-vi-webcam/",
+    provider: "British Antarctic Survey",
+  },
+
   // Antarctica New Zealand. Checked 2026-10-04: Last-Modified moved 14:29, 14:49, 14:59 UTC.
   {
     id: "curated:antnz-scott-base",
@@ -412,6 +433,76 @@ const STANDALONE_CAMS: Cam[] = [
     ...phenocam("bezamahafaly"),
     refreshSeconds: 1800,
     provider: "PhenoCam Network / Beza Mahafaly Special Reserve",
+  },
+
+  // South African Astronomical Observatory, Sutherland. Checked 2026-10-05:
+  // all-sky frame stamped 05:31 SAST, two minutes old; rewritten every minute.
+  // Its server sends only its own certificate, so the Sectigo intermediate in
+  // assets/certs is what lets Node verify it; see src/lib/extraCa.ts.
+  {
+    id: "curated:saao-sutherland-allsky",
+    title: "All-sky camera, SAAO Sutherland",
+    place: "Sutherland, Northern Cape",
+    country: "South Africa",
+    lat: -32.3783,
+    lon: 20.8105,
+    category: "observatory",
+    prominence: 7,
+    stillUrl: "https://suthweather.saao.ac.za/AllSkyCurrentImageMarked.JPG",
+    refreshSeconds: 120,
+    sourcePage: "https://suthweather.saao.ac.za/",
+    provider: "South African Astronomical Observatory",
+  },
+
+  // AEMET's Izaña Atmospheric Research Center, 2,370 m up on Tenerife, off the
+  // Sahara coast. Checked 2026-10-05: frame stamped 03:30 local, six minutes
+  // old; new frames every five to ten minutes.
+  {
+    id: "curated:aemet-izana-north",
+    title: "Izaña Atmospheric Observatory, looking north",
+    place: "Izaña, Tenerife",
+    country: "Spain",
+    lat: 28.309,
+    lon: -16.4993,
+    category: "observatory",
+    prominence: 7,
+    stillUrl: "https://izana.aemet.es/wp-content/rtime/camaras/north.jpg",
+    refreshSeconds: 600,
+    sourcePage: "https://izana.aemet.es/webcams-real/",
+    provider: "AEMET Izaña Atmospheric Research Center",
+  },
+
+  // Crown and Champa Resorts' own cameras on two of its Maldivian islands,
+  // served from the group's own host and embedded on each resort's site.
+  // Checked 2026-10-05: frames stamped 09:45 and 09:48 resort time, minutes
+  // old. Resort time runs an hour ahead of Malé.
+  {
+    id: "curated:kuredu-pool",
+    title: "Kuredu Island, pool and lagoon",
+    place: "Kuredu, Lhaviyani Atoll",
+    country: "Maldives",
+    lat: 5.5497,
+    lon: 73.461,
+    category: "weather",
+    prominence: 7,
+    stillUrl: "https://www.maldiveswebcams.com/kuredu/kuredu-pool/poolcam/live.jpg",
+    refreshSeconds: 120,
+    sourcePage: "https://www.kuredu.com/webcams/",
+    provider: "Kuredu Island Resort",
+  },
+  {
+    id: "curated:komandoo-pool",
+    title: "Komandoo Island, infinity pool",
+    place: "Komandoo, Lhaviyani Atoll",
+    country: "Maldives",
+    lat: 5.4967,
+    lon: 73.4194,
+    category: "weather",
+    prominence: 6,
+    stillUrl: "https://www.maldiveswebcams.com/komandoo/komandoo-pool/live.jpg",
+    refreshSeconds: 120,
+    sourcePage: "https://www.komandoo.com/webcam/",
+    provider: "Komandoo Island Resort",
   },
 
   // Observatoire Volcanologique du Piton de la Fournaise. Checked 2026-10-04:
@@ -570,6 +661,25 @@ const STANDALONE_CAMS: Cam[] = [
     sourcePage: "https://webcams.sure.co.fk/",
     provider: "Sure South Atlantic",
   },
+  // British Antarctic Survey's Bird Island station, off the western tip of
+  // South Georgia; the same latest.php endpoint as Halley above. Checked
+  // 2026-10-05: frame stamped 03:01 UTC, half an hour old; new frames hourly.
+  // At night the picture is sensor noise over a dark colony, not a fault.
+  {
+    id: "curated:bas-bird-island",
+    title: "Bird Island Research Station",
+    place: "Bird Island, South Georgia",
+    country: "South Georgia and the South Sandwich Islands",
+    lat: -54.0092,
+    lon: -38.0507,
+    category: "wildlife",
+    prominence: 8,
+    stillUrl: "https://legacy.bas.ac.uk/images/webcams/latest/latest.php?cam=birdisland",
+    refreshSeconds: 1800,
+    sourcePage: "https://www.bas.ac.uk/data/our-data/images/webcams/bird-island-webcam/",
+    provider: "British Antarctic Survey",
+  },
+
   // PhenoCam sites in southern Chile, kept by the Universidad de Magallanes
   // and the Senda Darwin station. Checked 2026-10-04, same terms as the African ones above.
   {
